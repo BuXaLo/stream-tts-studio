@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>TTS & Overlay Studio</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Студия Персонажей</h2>
+        <button id="btn-new-char" class="btn btn-primary">+ Создать</button>
+      </div>
+      <div class="nav-tabs">
+        <button id="tab-btn-characters" class="nav-tab-btn active">🎭 Персонажи</button>
+        <button id="tab-btn-settings" class="nav-tab-btn">⚙️ Настройки & API</button>
+      </div>
+      <div id="character-list" class="char-list"></div>
+    </aside>
+
+    <!-- ВКЛАДКА 1: РЕДАКТОР ПЕРСОНАЖЕЙ -->
+    <main class="main-content" id="view-characters">
+      <header class="content-header">
+        <div>
+          <h1 id="editor-title">Настройка персонажа</h1>
+          <span id="editor-mode-badge" class="mode-badge">Режим редактирования</span>
+        </div>
+        <div class="header-actions">
+          <button id="btn-copy-obs-url" class="btn btn-secondary" title="Скопировать ссылку для Browser Source в OBS">📋 Ссылка OBS</button>
+          <button id="btn-copy-obs-test-url" class="btn btn-secondary" title="Скопировать ссылку со статичным окном для удобной обрезки (Alt) и выравнивания в OBS">🎯 Калибровка OBS</button>
+          <button id="btn-set-active" class="btn btn-secondary">Сделать активным</button>
+          <button id="btn-save-char" class="btn btn-success">Сохранить</button>
+          <button id="btn-delete-char" class="btn btn-danger">Удалить</button>
+        </div>
+      </header>
+
+      <div class="editor-grid">
+        <section class="card">
+          <h2>1. Голос и Редактор Семпла</h2>
+          <div class="form-group">
+            <label>ID персонажа (латиница без пробелов):</label>
+            <input type="text" id="char-id" placeholder="mita">
+            <small id="char-id-hint" class="hint-text">Уникальный идентификатор</small>
+          </div>
+          <div class="form-group">
+            <label>Имя персонажа:</label>
+            <input type="text" id="char-name" placeholder="Мита">
+          </div>
+          
+          <div class="form-group">
+            <label>Сэмпл голоса (WAV, MP3, OGG, M4A, FLAC):</label>
+            <div class="sample-source-buttons">
+              <input type="file" id="voice-file-input" accept="audio/*" multiple class="hidden-file-input">
+              <button id="btn-choose-files" class="btn btn-secondary btn-full">📁 Загрузить файлы</button>
+              <button id="btn-record-mic" class="btn btn-secondary btn-full">🎤 Запись с микрофона</button>
+            </div>
+          </div>
+
+          <div id="recording-indicator" class="recording-box hidden">
+            <span class="rec-dot"></span>
+            <span id="recording-timer">Идет запись: 00:00</span>
+            <button id="btn-stop-record" class="btn btn-sm btn-danger">■ Завершить запись</button>
+          </div>
+
+          <div id="stitcher-container" class="stitcher-box hidden">
+            <div class="stitcher-header">
+              <span id="stitcher-count-info">Фрагментов: 0</span>
+              <button id="btn-clear-stitcher" class="btn btn-sm btn-danger">Очистить список</button>
+            </div>
+            <div id="stitcher-file-list" class="stitcher-list"></div>
+          </div>
+
+          <div id="waveform-container" class="waveform-box hidden">
+            <div id="waveform"></div>
+            <div class="waveform-controls">
+              <button id="btn-play-region" class="btn btn-sm btn-secondary">▶ Слушать</button>
+              <button id="btn-apply-trim" class="btn btn-sm btn-primary" title="Оставляет выделенный отрезок и распознает его в Whisper через RAM">✂ Обрезать и распознать</button>
+              <button id="btn-normalize" class="btn btn-sm btn-secondary" title="Выравнивание громкости в RAM">🔊 Выровнять громкость</button>
+              <button id="btn-isolate-vocal" class="btn btn-sm btn-secondary" title="Demucs изоляция голоса">🎵 Очистить голос (Demucs)</button>
+              <button id="btn-restore-noise" class="btn btn-sm btn-secondary hidden" title="Сбросить все обработки">↩ Исходный звук</button>
+              <span id="region-time-info" class="time-info">0.0с - 0.0с</span>
+            </div>
+
+            <div class="denoise-slider-row">
+              <label>Уровень нормализации:</label>
+              <input type="range" id="normalize-target" min="0.5" max="1.0" step="0.05" value="0.95">
+              <span id="normalize-target-val">95%</span>
+            </div>
+
+            <div class="denoise-slider-row" style="margin-top: 4px;">
+              <label>Качество очистки (Demucs Shifts):</label>
+              <select id="demucs-shifts" style="width: auto; padding: 2px 8px; font-size: 11px;">
+                <option value="1">1x (Быстро, базовый)</option>
+                <option value="2" selected>2x (Оптимально, студийный)</option>
+                <option value="4">4x (Максимум, глубокая очистка)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Транскрипция референса (Faster-Whisper):</label>
+            <textarea id="ref-text" rows="3" placeholder="Текст, который произносится в выделенном куске..."></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label>Скорость речи:</label>
+            <div class="slider-row">
+              <input type="range" id="speed-slider" min="0.5" max="1.5" step="0.05" value="1.0">
+              <span id="speed-val">1.0x</span>
+            </div>
+          </div>
+
+          <hr class="divider">
+
+          <div class="test-header">
+            <h3>Тестовый текст</h3>
+            <span class="char-limit-badge" id="char-count-badge">0 / 600 симв. (реком. до 150)</span>
+          </div>
+
+          <div class="form-group">
+            <textarea id="test-tts-text" rows="2" maxlength="600">Привет! Я теперь живу в твоем компьютере и смотрю на тебя.</textarea>
+          </div>
+
+          <div class="test-buttons-grid">
+            <button id="btn-test-tts-only" class="btn btn-secondary">🔊 Только Голос</button>
+            <button id="btn-test-overlay-only" class="btn btn-secondary">👁️ Только Оверлей</button>
+            <button id="btn-test-combo" class="btn btn-primary btn-combo">✨ Голос + Оверлей</button>
+          </div>
+
+          <div id="tts-audio-container" class="audio-box hidden">
+            <audio id="tts-result-player" controls></audio>
+            
+            <div class="export-actions-row">
+              <button id="btn-download-wav" class="btn btn-sm btn-secondary">💾 Скачать WAV</button>
+              <button id="btn-convert-telegram-ogg" class="btn btn-sm btn-secondary">📱 В Telegram Voice (OGG)</button>
+            </div>
+
+            <div id="telegram-player-box" class="telegram-box hidden">
+              <span class="tg-label">Telegram Voice (Opus 32k):</span>
+              <audio id="telegram-result-player" controls></audio>
+              <button id="btn-download-ogg" class="btn btn-sm btn-primary">⬇ Скачать .OGG</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>2. Визуал и Оформление</h2>
+          
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Аватарка персонажа:</label>
+              <input type="file" id="avatar-file-input" accept="image/*">
+            </div>
+            <div class="form-group">
+              <label>Позиция аватарки:</label>
+              <select id="avatar-position">
+                <option value="left">Слева от окна (Left)</option>
+                <option value="right">Справа от окна (Right)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="color-grid-extended">
+            <div class="form-group">
+              <label>Цвет рамки:</label>
+              <input type="color" id="border-color" value="#6366f1">
+            </div>
+            <div class="form-group">
+              <label>Фон диалога:</label>
+              <input type="color" id="bg-color" value="#0d0b14">
+            </div>
+            <div class="form-group">
+              <label>Текст диалога:</label>
+              <input type="color" id="text-color" value="#fcebeb">
+            </div>
+            <div class="form-group">
+              <label>Фон имени:</label>
+              <input type="color" id="name-bg-color" value="#6366f1">
+            </div>
+            <div class="form-group">
+              <label>Цвет имени:</label>
+              <input type="color" id="name-text-color" value="#ffffff">
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Прозрачность фона:</label>
+              <div class="slider-row">
+                <input type="range" id="bg-opacity-slider" min="0.1" max="1.0" step="0.05" value="0.9">
+                <span id="bg-opacity-val">90%</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Задержка закрытия (после речи):</label>
+              <div class="slider-row">
+                <input type="range" id="hide-delay-slider" min="0.5" max="8.0" step="0.5" value="2.0">
+                <span id="hide-delay-val">2.0с</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Форма рамки (Box Shape):</label>
+              <select id="box-shape">
+                <option value="shape-rounded">Скругленная (Modern Rounded)</option>
+                <option value="shape-sharp">Строгая / Терминал (Cyber Sharp)</option>
+                <option value="shape-pill">Овал / Пилюля (Soft Pill)</option>
+                <option value="shape-double">Двойной контур (Retro Arcade)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Спецэффект рамки (Glow FX):</label>
+              <select id="border-fx">
+                <option value="fx-none">Без эффекта (Чистая рамка)</option>
+                <option value="fx-neon">Неоновое свечение (Neon Glow)</option>
+                <option value="fx-pulse">Пульсация энергии (Pulse Glow)</option>
+                <option value="fx-rgb">RGB Shift / Хроматик</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Шрифт текста диалога:</label>
+            <select id="font-family">
+              <optgroup label="🎮 Пиксельные / Ретро">
+                <option value="DotGothic16">DotGothic16 (8-bit)</option>
+                <option value="Rubik Glitch">Rubik Glitch (Цифровой сбой)</option>
+                <option value="Russo One">Russo One (Аркадный / Блочный)</option>
+              </optgroup>
+              <optgroup label="👻 Хоррор и Мистика">
+                <option value="Ruslan Display">Ruslan Display (Готика / Тьма)</option>
+                <option value="Underdog">Underdog (Неровный / Тревожный)</option>
+                <option value="Kelly Slab">Kelly Slab (Криповый / Техно)</option>
+              </optgroup>
+              <optgroup label="🌸 Аниме и Ламповые">
+                <option value="Comfortaa">Comfortaa (Скругленный мягкий)</option>
+                <option value="Caveat">Caveat (Живой / Забавный)</option>
+                <option value="Neucha">Neucha (Мягкий мультяшный)</option>
+                <option value="Marck Script">Marck Script (Рукописный / Новелла)</option>
+              </optgroup>
+              <optgroup label="⚡ Киберпанк и Современные">
+                <option value="Orbitron">Orbitron (Киберпанк / Sci-Fi)</option>
+                <option value="Montserrat">Montserrat (Чистый современный)</option>
+                <option value="Roboto">Roboto (Строгий нейтральный)</option>
+              </optgroup>
+              <optgroup label="📁 Пользовательские (Свои)" id="custom-fonts-optgroup"></optgroup>
+            </select>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <input type="file" id="font-file-input" accept=".ttf,.otf,.woff2,.woff" class="hidden-file-input">
+              <button type="button" id="btn-upload-font" class="btn btn-secondary btn-full">➕ Загрузить шрифт</button>
+            </div>
+            <div class="form-group">
+              <div class="slider-row" style="margin-top: 4px;">
+                <label style="margin: 0; min-width: 50px;">Размер:</label>
+                <input type="range" id="font-size-slider" min="16" max="38" step="1" value="22">
+                <span id="font-size-val">22px</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Появление окна:</label>
+              <select id="entrance-animation">
+                <option value="slide-up">Выезд снизу (Slide Up)</option>
+                <option value="slide-side">Выезд сбоку (Slide Side)</option>
+                <option value="pop-up">Пружинящий Pop-Up</option>
+                <option value="zoom-bounce">Зум (Zoom Bounce)</option>
+                <option value="glitch-enter">Глитч-вход</option>
+                <option value="flip-in">3D Flip</option>
+                <option value="fade-in">Fade-In</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Исчезновение:</label>
+              <select id="exit-animation">
+                <option value="fade-out">Плавное (Fade Out)</option>
+                <option value="slide-down">Уезд вниз (Slide Down)</option>
+                <option value="zoom-out">Сжатие (Zoom Out)</option>
+                <option value="glitch-exit">Глитч-сбой</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Вывод текста:</label>
+              <select id="text-animation">
+                <option value="typewriter">Печать (Typewriter)</option>
+                <option value="word-fade">Словами (Word Fade)</option>
+                <option value="glitch-decode">Декодер (Glitch)</option>
+                <option value="wavy-text">Волна (Wavy)</option>
+                <option value="instant">Мгновенно</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="preview-section-title">
+            <h3>Внешний вид оверлея (Текущие стили)</h3>
+          </div>
+          <div class="static-preview-stage">
+            <div id="static-overlay-box" class="overlay-container-preview">
+              <div class="avatar-box" id="static-avatar-box">
+                <img id="static-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Crect width='150' height='150' fill='%23222'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' dominant-baseline='middle' text-anchor='middle'%3EAvatar%3C/text%3E%3C/svg%3E">
+              </div>
+              <div class="dialogue-box shape-rounded fx-neon" id="static-dialogue-box">
+                <div class="name-tag" id="static-name-tag">Персонаж</div>
+                <span class="dialogue-text" id="static-text">Так будет выглядеть текст реплики на вашем стриме...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-section-title">
+            <h3>Сцена анимации диалога (OBS Test)</h3>
+          </div>
+          <div class="dynamic-preview-stage">
+            <div id="dynamic-overlay-container" class="overlay-container-preview anim-container">
+              <div class="avatar-box" id="dynamic-avatar-box">
+                <img id="dynamic-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Crect width='150' height='150' fill='%23222'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' dominant-baseline='middle' text-anchor='middle'%3EAvatar%3C/text%3E%3C/svg%3E">
+              </div>
+              <div class="dialogue-box shape-rounded fx-neon" id="dynamic-dialogue-box">
+                <div class="name-tag" id="dynamic-name-tag">Персонаж</div>
+                <span class="dialogue-text" id="dynamic-text-target"><span class="cursor" id="dynamic-cursor"></span></span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- ВКЛАДКА 2: НАСТРОЙКИ & API & КОНСТРУКТОР -->
+    <main class="main-content hidden" id="view-settings">
+      <header class="content-header">
+        <div>
+          <h1>Настройки & C# Конструктор</h1>
+          <span class="mode-badge">Конфигурация сервера, DonationAlerts и генератор скриптов</span>
+        </div>
+        <div class="header-actions">
+          <button id="btn-save-settings" class="btn btn-success">💾 Сохранить настройки</button>
+        </div>
+      </header>
+
+      <div class="settings-grid">
+        <!-- ЛЕВАЯ КОЛОНКА -->
+        <div style="display:flex; flex-direction:column; gap:24px; min-width:0;">
+          <!-- 1. Параметры Сервера -->
+          <section class="card">
+            <h2>1. Параметры Сервера & Нейросети</h2>
+            
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>Хост сервера:</label>
+                <select id="cfg-host">
+                  <option value="127.0.0.1">127.0.0.1 (Только локальный ПК)</option>
+                  <option value="0.0.0.0">0.0.0.0 (Внешний доступ / Любой интерфейс)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Порт сервера:</label>
+                <input type="number" id="cfg-port" value="8765" min="1024" max="65535">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Качество и шаги генерации (Flow Matching Steps):</label>
+              <div class="slider-row">
+                <input type="range" id="cfg-timesteps" min="4" max="15" step="1" value="6">
+                <span id="cfg-timesteps-val" style="min-width: 40px; font-weight:700;">6 шагов</span>
+              </div>
+              <small class="hint-text">4 — максимально быстро; 6 — оптимум для стрима (по умолчанию); 10-12 — студийное качество.</small>
+            </div>
+
+            <div class="form-group" style="margin-top: 6px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="cfg-auto-open">
+                <span>Автоматически открывать WebUI в браузере при запуске сервера</span>
+              </label>
+            </div>
+          </section>
+
+          <!-- 2. Статус OBS и Оверлей -->
+          <section class="card">
+            <h2>2. Статус OBS и Оверлей</h2>
+            <div class="status-monitor-box">
+              <div class="status-row">
+                <span>Соединение с оверлеем в OBS:</span>
+                <span id="obs-status-badge" class="badge-offline">⚫ Ожидание подключения</span>
+              </div>
+            </div>
+            <small class="hint-text" style="margin-top: 4px; display: block;">💡 <b>Параметры OBS:</b> добавляя источник браузера, выставляйте разрешение такое же, как у холста (например, 1920х1080 или 2560х1440).<br>Если вы добавили новые шрифты, сменили стили или оверлей завис, зайдите в свойства источника «Браузер» в OBS и нажмите <i>«Обновить кэш текущей страницы»</i>.</small>
+
+            <div class="obs-actions-row">
+              <button id="btn-settings-copy-obs" class="btn btn-secondary">📋 Ссылка оверлея</button>
+              <button id="btn-settings-copy-test" class="btn btn-secondary">🎯 Калибровка (?test=1)</button>
+              <a href="/docs" target="_blank" class="btn btn-secondary" style="text-decoration:none;">📖 Swagger UI (/docs)</a>
+            </div>
+          </section>
+
+          <!-- 3. Интеграция с DonationAlerts -->
+          <section class="card">
+            <h2>3. Интеграция с DonationAlerts (Слушатель Донатов)</h2>
+            <div class="status-monitor-box">
+              <div class="status-row">
+                <span>Статус DonationAlerts:</span>
+                <span id="da-status-badge" class="badge-offline">⚫ Отключен</span>
+              </div>
+              <div class="status-row" style="margin-top: 4px; font-size: 11px; color: var(--text-dim);">
+                <span>Авторизованный аккаунт:</span>
+                <span id="da-user-badge" style="color: #fff; font-weight: 600;">Не авторизован</span>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 6px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="da-cfg-enabled">
+                <span>Включить фоновый перехват донатов (DA Centrifugo WebSocket)</span>
+              </label>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>ID приложения:</label>
+                <input type="text" id="da-cfg-client-id" placeholder="12345">
+              </div>
+              <div class="form-group">
+                <label>Ключ API:</label>
+                <div class="input-password-wrapper">
+                  <input type="password" id="da-cfg-client-secret" placeholder="••••••••••••">
+                  <button type="button" class="btn-toggle-password" id="btn-toggle-da-secret" title="Показать/скрыть ключ">👁️</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>HTTP адрес Streamer.bot:</label>
+                <input type="text" id="da-cfg-sb-url" value="http://127.0.0.1:7474/DoAction">
+              </div>
+              <div class="form-group">
+                <label>Название Action в Streamer.bot:</label>
+                <input type="text" id="da-cfg-sb-action" value="Donation">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>URL перенаправления:</label>
+              <div class="input-copy-group">
+                <input type="text" id="da-redirect-uri" readonly style="background:#12111a; color:#818cf8; font-family:monospace; font-size:11px;">
+                <button type="button" class="btn btn-secondary" id="btn-copy-da-redirect" title="Скопировать URL">📋</button>
+              </div>
+              <small class="hint-text">Создайте приложение на <a href="https://www.donationalerts.com/application/clients" target="_blank" style="color:var(--accent);">donationalerts.com/application/clients</a> и вставьте этот URL перенаправления.</small>
+            </div>
+
+            <div class="obs-actions-row">
+              <button id="btn-da-login" class="btn btn-primary">🔗 Авторизоваться в DA</button>
+              <button id="btn-da-save" class="btn btn-secondary">💾 Сохранить DA</button>
+              <button id="btn-da-test" class="btn btn-secondary" title="Отправить тестовое событие доната в Streamer.bot">🎁 Тест Доната</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ПРАВАЯ КОЛОНКА -->
+        <div style="display:flex; flex-direction:column; gap:24px; min-width:0;">
+          <!-- 4. Интерактивный генератор C# скриптов -->
+          <section class="card">
+            <h2>4. Интерактивный Генератор C# Скриптов</h2>
+            <small class="hint-text">Соберите готовый код для Streamer.bot в один клик под любое событие.</small>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>Тип события:</label>
+                <select id="gen-event-type">
+                  <option value="tts">💬 Озвучка чата / Награды за баллы</option>
+                  <option value="follow">⭐ Фоллоу (Подписка)</option>
+                  <option value="raid">🚀 Рейд стримера</option>
+                  <option value="donate">🎁 Донат (DonationAlerts)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Выбор персонажа:</label>
+                <select id="gen-char-select">
+                  <option value="">(По умолчанию — активный персонаж)</option>
+                </select>
+                <small class="hint-text">Если оставить активным, озвучит дефолтный герой.</small>
+              </div>
+            </div>
+
+            <!-- Блок настроек для TTS -->
+            <div id="gen-options-tts" class="form-group">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label>Лимит символов:</label>
+                  <input type="number" id="gen-max-len" value="300" min="50" max="1000">
+                  <small class="hint-text">Ограничивает длину сообщения, чтобы не тормозить стрим.</small>
+                </div>
+                <div class="form-group">
+                  <label>Реакция на превышение:</label>
+                  <select id="gen-limit-action">
+                    <option value="chat">💬 Написать ошибку в чат (бот)</option>
+                    <option value="voice">🔊 Озвучить ошибку голосом</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" style="margin-top: 4px;">
+                <label>Текст сообщения при превышении лимита:</label>
+                <input type="text" id="gen-limit-text" value="Твое сообщение слишком длинное! Максимальный лимит — 300 символов.">
+              </div>
+            </div>
+
+            <!-- Блок настроек для Фоллоу / Рейда -->
+            <div id="gen-options-phrases" class="form-group hidden">
+              <div class="form-group">
+                <label>Режим приветствия:</label>
+                <select id="gen-phrase-mode">
+                  <option value="single">Одна статичная фраза</option>
+                  <option value="random" selected>Случайная фраза из списка</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Шаблоны фраз:</label>
+                <div id="gen-phrases-container" class="phrases-container">
+                  <!-- Динамические строки фраз -->
+                </div>
+                <button type="button" id="btn-add-phrase" class="btn btn-sm btn-secondary hidden" style="margin-top: 6px; width: fit-content;">➕ Добавить вариант фразы</button>
+                <small class="hint-text" id="gen-vars-hint" style="margin-top: 4px;">📌 Переменные: <code>{user}</code> — ник зрителя.</small>
+              </div>
+            </div>
+
+            <!-- Блок настроек для Донатов -->
+            <div id="gen-options-donate" class="form-group hidden">
+              <div class="form-group">
+                <label>Шаблон при донате БЕЗ сообщения:</label>
+                <input type="text" id="gen-donate-nomessage" value="Спасибо, {user}, за поддержку в размере {amount}!">
+              </div>
+              <div class="form-group" style="margin-top: 4px;">
+                <label>Шаблон при донате С сообщением:</label>
+                <input type="text" id="gen-donate-withmessage" value="{user} прислал {amount} с сообщением: {message}">
+              </div>
+              <small class="hint-text" style="margin-top: 4px;">📌 Переменные: <code>{user}</code> — ник донатера, <code>{amount}</code> — сумма со словом валюты, <code>{message}</code> — текст доната.</small>
+            </div>
+
+            <div class="snippet-box" style="margin-top: 6px;">
+              <div class="snippet-header">
+                <span>Сгенерированный C# код (Streamer.bot)</span>
+                <button class="btn btn-sm btn-primary" id="btn-copy-generated">📋 Копировать готовый C#</button>
+              </div>
+              <pre><code id="code-generated">/* Настройте параметры выше */</code></pre>
+            </div>
+          </section>
+
+          <!-- 5. Базовые примеры интеграции (API) -->
+          <section class="card">
+            <h2>5. Базовые примеры интеграции (API)</h2>
+            <small class="hint-text">Эндпоинт <code>POST /speak</code> принимает JSON. Параметры <code>character</code> (ID) и <code>speed</code> (скорость) опциональны — если их не передавать, используется активный по умолчанию персонаж.</small>
+
+            <div class="snippet-box">
+              <div class="snippet-header">
+                <span>cURL (Консоль / Запрос)</span>
+                <button class="btn btn-sm btn-secondary" onclick="copySnippetText(this.parentElement.nextElementSibling.innerText)">📋</button>
+              </div>
+              <pre><code># Озвучка активным персонажем:
+curl -X POST "http://127.0.0.1:8765/speak" \
+     -H "Content-Type: application/json" \
+     -d "{\"text\": \"Привет, мир!\"}" \
+     --output speech.wav
+
+# Озвучка с явным указанием персонажа и скорости:
+curl -X POST "http://127.0.0.1:8765/speak" \
+     -H "Content-Type: application/json" \
+     -d "{\"text\": \"Привет!\", \"character\": \"mita\", \"speed\": 1.1}" \
+     --output speech.wav</code></pre>
+            </div>
+
+            <div class="snippet-box">
+              <div class="snippet-header">
+                <span>Python</span>
+                <button class="btn btn-sm btn-secondary" onclick="copySnippetText(this.parentElement.nextElementSibling.innerText)">📋</button>
+              </div>
+              <pre><code>import requests
+
+url = "http://127.0.0.1:8765/speak"
+payload = {
+    "text": "Привет от нейросети!",
+    "character": "mita",  # Необязательно (по умолчанию активный)
+    "speed": 1.0          # Необязательно (от 0.5 до 1.5)
+}
+
+response = requests.post(url, json=payload)
+if response.status_code == 200:
+    with open("output.wav", "wb") as f:
+        f.write(response.content)
+    print("Звук сохранен в output.wav")</code></pre>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="builder.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

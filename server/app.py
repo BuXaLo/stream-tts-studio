@@ -37,7 +37,6 @@ BASE_DIR = os.path.dirname(SERVER_DIR)
 
 COSY_DIR = os.path.join(BASE_DIR, "cosyvoice3")
 CHARACTERS_DIR = os.path.join(BASE_DIR, "characters")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output", "tts_output")
 PRESETS_FILE = os.path.join(SERVER_DIR, "presets.json")
 ACTIVE_FILE = os.path.join(SERVER_DIR, "active_character.json")
 CONFIG_FILE = os.path.join(SERVER_DIR, "config.json")
@@ -53,7 +52,6 @@ CUSTOM_FONTS_DIR = os.path.join(FONTS_DIR, "custom")
 AUDIO_TOOLS_CACHE = os.path.join(COSY_DIR, "pretrained_models", "audio_tools")
 
 os.makedirs(CHARACTERS_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(BUNDLED_FONTS_DIR, exist_ok=True)
 os.makedirs(CUSTOM_FONTS_DIR, exist_ok=True)
@@ -563,11 +561,7 @@ def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
     if len(audio) == 0:
         return audio
     audio = audio - np.mean(audio)
-    trim_start = int(sr * 0.008)
-    trim_end = int(sr * 0.025)
-    if len(audio) > (trim_start + trim_end + 1000):
-        audio = audio[trim_start:-trim_end]
-    fade_len = int(sr * 0.015)
+    fade_len = int(sr * 0.010)
     if len(audio) > fade_len * 2:
         fade_in = 0.5 * (1 - np.cos(np.linspace(0, np.pi, fade_len)))
         fade_out = 0.5 * (1 + np.cos(np.linspace(0, np.pi, fade_len)))
@@ -997,6 +991,33 @@ async def api_isolate_vocal(
     finally:
         clear_vram()
 
+def convert_to_clean_wav(input_bytes: bytes) -> bytes:
+    if not os.path.isfile(FFMPEG_PATH):
+        return input_bytes
+    temp_in = os.path.join(TEMP_DIR, f"raw_in_{int(time.time()*1000)}")
+    temp_out = os.path.join(TEMP_DIR, f"clean_out_{int(time.time()*1000)}.wav")
+    try:
+        with open(temp_in, "wb") as f:
+            f.write(input_bytes)
+        cmd = [
+            FFMPEG_PATH, "-y", "-i", temp_in,
+            "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le",
+            temp_out
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode == 0 and os.path.exists(temp_out):
+            with open(temp_out, "rb") as f:
+                return f.read()
+        return input_bytes
+    except Exception as e:
+        print(f"[FFmpeg Convert Error] {e}")
+        return input_bytes
+    finally:
+        for p in (temp_in, temp_out):
+            if os.path.exists(p):
+                try: os.remove(p)
+                except Exception: pass
+
 @app.post("/api/convert_to_telegram_ogg")
 async def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
     if not os.path.isfile(FFMPEG_PATH):
@@ -1047,9 +1068,11 @@ async def api_test_draft_tts(
     voice_path = None
 
     if voice_file:
+        raw_draft = await voice_file.read()
+        clean_draft = convert_to_clean_wav(raw_draft)
         temp_voice = os.path.join(TEMP_DIR, f"draft_{int(time.time()*1000)}.wav")
         with open(temp_voice, "wb") as f:
-            f.write(await voice_file.read())
+            f.write(clean_draft)
         voice_path = temp_voice
     elif char_id:
         existing_path = os.path.join(CHARACTERS_DIR, char_id, "voice.wav")
@@ -1123,8 +1146,10 @@ async def api_save_character(
 
     voice_path = os.path.join(char_dir, "voice.wav")
     if voice_file:
+        raw_voice = await voice_file.read()
+        clean_wav = convert_to_clean_wav(raw_voice)
         with open(voice_path, "wb") as f:
-            f.write(await voice_file.read())
+            f.write(clean_wav)
 
     avatar_path = os.path.join(char_dir, "avatar.png")
     if avatar_file:

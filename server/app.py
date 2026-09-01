@@ -993,30 +993,46 @@ async def api_isolate_vocal(
 
 def convert_to_clean_wav(input_bytes: bytes) -> bytes:
     if not os.path.isfile(FFMPEG_PATH):
-        return input_bytes
-    temp_in = os.path.join(TEMP_DIR, f"raw_in_{int(time.time()*1000)}")
-    temp_out = os.path.join(TEMP_DIR, f"clean_out_{int(time.time()*1000)}.wav")
+        raise RuntimeError(f"FFmpeg не найден: {FFMPEG_PATH}")
+
+    timestamp = int(time.time() * 1000)
+    temp_in = os.path.join(TEMP_DIR, f"raw_in_{timestamp}")
+    temp_out = os.path.join(TEMP_DIR, f"clean_out_{timestamp}.wav")
+
     try:
         with open(temp_in, "wb") as f:
             f.write(input_bytes)
+
         cmd = [
-            FFMPEG_PATH, "-y", "-i", temp_in,
-            "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le",
+            FFMPEG_PATH,
+            "-y",
+            "-i", temp_in,
+            "-ar", "24000",
+            "-ac", "1",
+            "-c:a", "pcm_s16le",
             temp_out
         ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if res.returncode == 0 and os.path.exists(temp_out):
-            with open(temp_out, "rb") as f:
-                return f.read()
-        return input_bytes
-    except Exception as e:
-        print(f"[FFmpeg Convert Error] {e}")
-        return input_bytes
+
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if res.returncode != 0 or not os.path.isfile(temp_out):
+            err_msg = res.stderr.decode("utf-8", errors="ignore")[-500:]
+            raise RuntimeError(f"FFmpeg decode error: {err_msg}")
+
+        with open(temp_out, "rb") as f:
+            return f.read()
+
     finally:
         for p in (temp_in, temp_out):
             if os.path.exists(p):
-                try: os.remove(p)
-                except Exception: pass
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
 @app.post("/api/convert_to_telegram_ogg")
 async def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
@@ -1068,8 +1084,13 @@ async def api_test_draft_tts(
     voice_path = None
 
     if voice_file:
-        raw_draft = await voice_file.read()
-        clean_draft = convert_to_clean_wav(raw_draft)
+        try:
+            raw_draft = await voice_file.read()
+            clean_draft = convert_to_clean_wav(raw_draft)
+        except RuntimeError as e:
+            print(f"[Draft Audio Convert Error] {e}")
+            raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")
+
         temp_voice = os.path.join(TEMP_DIR, f"draft_{int(time.time()*1000)}.wav")
         with open(temp_voice, "wb") as f:
             f.write(clean_draft)
@@ -1146,8 +1167,13 @@ async def api_save_character(
 
     voice_path = os.path.join(char_dir, "voice.wav")
     if voice_file:
-        raw_voice = await voice_file.read()
-        clean_wav = convert_to_clean_wav(raw_voice)
+        try:
+            raw_voice = await voice_file.read()
+            clean_wav = convert_to_clean_wav(raw_voice)
+        except RuntimeError as e:
+            print(f"[Save Character Audio Error] {e}")
+            raise HTTPException(status_code=400, detail="Не удалось обработать аудиофайл. Проверьте формат.")
+
         with open(voice_path, "wb") as f:
             f.write(clean_wav)
 

@@ -8,7 +8,7 @@
 
 ---
 
-### 👉 [⬇️ **СКАЧАТЬ STREAM TTS STUDIO**](https://disk.yandex.ru/d/2z93HIAr8CI4Mg)
+### 👉 [⬇️ **СКАЧАТЬ STREAM TTS STUDIO**](https://disk.yandex.ru/d/jlnHxfgRHRPtxg)
 
 **Установка не требуется:**
 

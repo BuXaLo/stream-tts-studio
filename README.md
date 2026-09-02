@@ -7,6 +7,10 @@
 Основная задача — превратить локальный voice cloning / TTS в полноценный инструмент для стрима: от сообщения зрителя или доната до готовой озвучки и отображения текста на экране.
 
 ---
+## 🎬 Видео о проекте
+
+[![Stream TTS Studio — обзор и демонстрация](https://img.youtube.com/vi/XEM9o7vIT-k/maxresdefault.jpg)](https://www.youtube.com/watch?v=XEM9o7vIT-k)
+---
 
 ### 👉 [⬇️ **СКАЧАТЬ STREAM TTS STUDIO**](https://disk.yandex.ru/d/jlnHxfgRHRPtxg)
 

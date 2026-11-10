@@ -548,9 +548,10 @@ def sanitize_text(text: str) -> str:
     def replace_isolated_digits(match):
         val_str = match.group(0)
         try:
-            val = int(val_str)
-            return num_to_ru_words(val)
-        except ValueError:
+            if len(val_str) > 9:
+                return " ".join(num_to_ru_words(int(d)) for d in val_str)
+            return num_to_ru_words(int(val_str))
+        except (ValueError, IndexError, OverflowError):
             return val_str
 
     text = re.sub(r'(?<![A-Za-z0-9_])\d+(?![A-Za-z0-9_])', replace_isolated_digits, text)

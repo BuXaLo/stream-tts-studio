@@ -58,3 +58,24 @@ def test_validate_port_accepts_full_range(value, expected):
 def test_validate_port_rejects_invalid_values(value):
     with pytest.raises(ValueError):
         validate_port(value)
+
+
+@pytest.mark.parametrize("value", [
+    "http://localhost:7474/DoAction",
+    "https://example.test/api",
+    "http://[::1]:7474/DoAction",
+])
+def test_validate_http_url_accepts_http_and_https(value):
+    from studio.core.validation import validate_http_url
+    assert validate_http_url(value) == value
+
+
+@pytest.mark.parametrize("value", [
+    None, 123, "ftp://localhost", "http://user:pass@localhost",
+    "http://localhost:0", "http://localhost:65536", "http://[broken",
+    "http://localhost/path#fragment",
+])
+def test_validate_http_url_rejects_invalid_values(value):
+    from studio.core.validation import validate_http_url
+    with pytest.raises(ValueError):
+        validate_http_url(value)

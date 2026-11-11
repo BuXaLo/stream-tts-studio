@@ -41,14 +41,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
-from cosyvoice.cli.cosyvoice import AutoModel
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 from studio.core.config import ConfigStore
 from studio.core.ws import ws_manager
 from studio.services.text import has_speakable_content, sanitize_overlay_text
-from studio.core.validation import is_valid_bind_host, same_origin, validate_port
+from studio.core.validation import is_valid_bind_host, same_origin, validate_port, validate_http_url
 from studio.services.da_worker import DonationAlertsWorker, configure_worker
+from studio.services.tts_engine import load_cosyvoice_model
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -69,7 +69,7 @@ WHISPER_PATH = os.path.join(COSY_DIR, "pretrained_models", "faster-whisper-small
 COSY_PATH = os.path.join(COSY_DIR, "pretrained_models", "Fun-CosyVoice3-0.5B")
 
 logger.info("Загрузка CosyVoice 3 в GPU...")
-cosyvoice = AutoModel(model_dir=COSY_PATH)
+cosyvoice = load_cosyvoice_model(COSY_PATH)
 logger.info("CosyVoice 3 успешно загружен")
 
 generation_lock = threading.Lock()
@@ -177,17 +177,10 @@ def validate_host(value):
     return host
 
 def validate_streamerbot_url(value):
-    if not isinstance(value, str):
-        raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
-    value = value.strip()
-    parsed = urllib.parse.urlsplit(value)
     try:
-        valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+        return validate_http_url(value)
     except ValueError:
-        valid_port = False
-    if parsed.scheme not in ("http", "https") or not parsed.hostname or not valid_port or parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
-    return value
 
 from studio.routes.system import create_system_router
 app.include_router(create_system_router(load_config, save_config, get_file_lock, CONFIG_FILE, ws_manager, validate_host, validate_port))

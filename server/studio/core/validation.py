@@ -70,3 +70,26 @@ def same_origin(origin, host_header, request_scheme):
         return _host_port(parsed.netloc, parsed.scheme) == _host_port(host_header, expected_scheme)
     except (TypeError, ValueError):
         return False
+
+
+
+def validate_http_url(value):
+    """Validate a non-credentialed HTTP(S) URL with an optional valid port."""
+    if not isinstance(value, str):
+        raise ValueError("URL must be a string")
+    value = value.strip()
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("malformed URL") from exc
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or (port is not None and not 1 <= port <= 65535)
+        or parsed.fragment
+    ):
+        raise ValueError("URL must be an HTTP(S) URL with a valid host and port")
+    return value

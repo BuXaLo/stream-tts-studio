@@ -448,7 +448,11 @@ def main():
             tray.start()
             webbrowser.open(monitor_url, new=2)
             controller.write_log("Монитор открыт в браузере по умолчанию.")
-            controller.start_backend()
+            try:
+                controller.start_backend()
+            except Exception as exc:
+                controller.set_state(status="error", detail="Не удалось запустить backend: {}".format(exc))
+                controller.write_log("Ошибка первоначального запуска backend: {}".format(exc))
             while not exit_requested.wait(0.5):
                 controller.refresh()
         finally:

@@ -71,3 +71,9 @@ def test_concurrent_atomic_writes_always_leave_valid_json(tmp_path):
         thread.join()
     assert not failures
     assert isinstance(json.loads(path.read_text(encoding="utf-8")), dict)
+
+
+def test_missing_main_file_recovers_from_backup(tmp_path):
+    path = tmp_path / "presets.json"
+    (tmp_path / "presets.json.bak").write_text('{"recovered": true}', encoding="utf-8")
+    assert read_json(path, {}, strict=True) == {"recovered": True}

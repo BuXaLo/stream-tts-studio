@@ -134,7 +134,13 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
     def _local_request(self):
         ip = self.client_address[0]
         host = self.headers.get("Host", "").split(":", 1)[0].strip("[]").lower()
-        return ip in ("127.0.0.1", "::1") and host in ("127.0.0.1", "localhost")
+        origin = self.headers.get("Origin")
+        expected_origin = "http://127.0.0.1:{}".format(self.server.server_address[1])
+        return (
+            ip in ("127.0.0.1", "::1")
+            and host in ("127.0.0.1", "localhost")
+            and (not origin or origin == expected_origin)
+        )
 
     def do_GET(self):
         if not self._local_request():

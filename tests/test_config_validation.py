@@ -1,11 +1,12 @@
 import json
+from pathlib import Path
 
 from studio.core.config import ConfigStore, DEFAULT_CONFIG, DEFAULT_DA_CONFIG
 
 
 def test_config_store_normalizes_invalid_legacy_values(tmp_path):
     store = ConfigStore(tmp_path)
-    store.config_file.write_text(json.dumps({
+    Path(store.config_file).write_text(json.dumps({
         "host": None, "port": True, "n_timesteps": 999, "auto_open_browser": "yes", "custom": "kept"
     }), encoding="utf-8")
     config = store.load_config()
@@ -18,7 +19,7 @@ def test_config_store_normalizes_invalid_legacy_values(tmp_path):
 
 def test_da_config_normalizes_invalid_legacy_values(tmp_path):
     store = ConfigStore(tmp_path)
-    store.da_config_file.write_text(json.dumps({
+    Path(store.da_config_file).write_text(json.dumps({
         "enabled": "true", "client_id": 123, "client_secret": None,
         "streamerbot_url": "ftp://localhost", "streamerbot_action": "[]"
     }), encoding="utf-8")

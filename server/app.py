@@ -1013,7 +1013,7 @@ def api_get_fonts():
     return {"custom_fonts": custom_list}
 
 @app.post("/api/upload_font")
-async def api_upload_font(file: UploadFile = File(...)):
+def api_upload_font(file: UploadFile = File(...)):
     filename = file.filename or ""
     raw_name, ext = os.path.splitext(filename)
     ext = ext.lower()
@@ -1027,13 +1027,11 @@ async def api_upload_font(file: UploadFile = File(...)):
 
     final_filename = f"{clean_base}{ext}"
     dest_path = os.path.join(CUSTOM_FONTS_DIR, final_filename)
-
-    if not os.path.exists(dest_path):
-        with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        is_duplicate = False
-    else:
+    if os.path.exists(dest_path):
         is_duplicate = True
+    else:
+        write_bytes_atomic(dest_path, file.file.read())
+        is_duplicate = False
 
     return {
         "status": "ok",
@@ -1044,7 +1042,7 @@ async def api_upload_font(file: UploadFile = File(...)):
     }
 
 @app.post("/api/trim_and_transcribe")
-async def api_trim_and_transcribe(
+def api_trim_and_transcribe(
     audio: UploadFile = File(...),
     start: float = Form(0.0),
     end: float = Form(0.0)
@@ -1052,9 +1050,13 @@ async def api_trim_and_transcribe(
     temp_in = os.path.join(TEMP_DIR, f"trim_in_{int(time.time()*1000)}.wav")
     temp_out = os.path.join(TEMP_DIR, f"trim_out_{int(time.time()*1000)}.wav")
     whisper_model = None
+    device = "cpu"
     try:
-        with open(temp_in, "wb") as f:
-            f.write(await audio.read())
+        if start < 0 or end < 0 or (end > 0 and end <= start):
+            raise HTTPException(status_code=400, detail="Некорректный диапазон обрезки аудио.")
+
+        with open(temp_in, "wb") as stream:
+            stream.write(audio.file.read())
 
         data, sr = sf.read(temp_in, dtype='float32')
         if data.ndim > 1:
@@ -1062,132 +1064,140 @@ async def api_trim_and_transcribe(
 
         start_frame = max(0, int(start * sr))
         end_frame = min(len(data), int(end * sr)) if end > 0 else len(data)
-        
-        trimmed_data = data[start_frame:end_frame]
-        
-        sf.write(temp_out, trimmed_data, sr, format="WAV", subtype="PCM_16")
+        if start_frame >= end_frame:
+            raise HTTPException(status_code=400, detail="Выбранный диапазон аудио пуст.")
 
+        sf.write(temp_out, data[start_frame:end_frame], sr, format="WAV", subtype="PCM_16")
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        whisper_model = WhisperModel(
-            WHISPER_PATH, 
-            device=device, 
-            compute_type="float16" if device == "cuda" else "int8"
-        )
-        segments, info = whisper_model.transcribe(
-            temp_out,
-            language=None,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            condition_on_previous_text=False,
-            temperature=0.0,
-            beam_size=1
-        )
-        text = " ".join([s.text.strip() for s in segments]).strip()
-        print(f"[Trim+Whisper] Язык: {info.language} ({round(info.language_probability * 100, 1)}%) | Текст: \"{text}\"")
+        with generation_lock:
+            whisper_model = WhisperModel(
+                WHISPER_PATH,
+                device=device,
+                compute_type="float16" if device == "cuda" else "int8"
+            )
+            segments, info = whisper_model.transcribe(
+                temp_out,
+                language=None,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+                condition_on_previous_text=False,
+                temperature=0.0,
+                beam_size=1
+            )
+            text = " ".join([segment.text.strip() for segment in segments]).strip()
 
-        with open(temp_out, "rb") as f:
-            wav_bytes = f.read()
-
-        return {
-            "text": sanitize_overlay_text(text),
-            "audio_base64": base64.b64encode(wav_bytes).decode('utf-8')
-        }
-    except Exception as e:
-        print(f"[Whisper Error] {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка обработки: {str(e)}")
+        logger.info(
+            "Whisper: язык %s (вероятность %s%%), распознано %s символов",
+            info.language, round(info.language_probability * 100, 1), len(text)
+        )
+        with open(temp_out, "rb") as stream:
+            wav_bytes = stream.read()
+        return {"text": text, "audio_base64": base64.b64encode(wav_bytes).decode("utf-8")}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Whisper processing failed")
+        raise HTTPException(status_code=500, detail=f"Ошибка обработки: {str(exc)}")
     finally:
         if whisper_model is not None:
             del whisper_model
-            clear_vram()
-
-        for p in [temp_in, temp_out]:
-            if os.path.exists(p):
-                try: os.remove(p)
-                except Exception: pass
+            if device == "cuda":
+                clear_vram()
+        for path in (temp_in, temp_out):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 @app.post("/api/normalize_audio")
-async def api_normalize_audio(
+def api_normalize_audio(
     audio: UploadFile = File(...),
     target_gain: float = Form(0.95)
 ):
+    if not 0.1 <= target_gain <= 1.0:
+        raise HTTPException(status_code=400, detail="target_gain должен быть в диапазоне 0.1–1.0.")
     try:
-        raw_bytes = await audio.read()
-        in_bio = io.BytesIO(raw_bytes)
+        in_bio = io.BytesIO(audio.file.read())
         data, sr = sf.read(in_bio, dtype='float32')
-        
+        if data.size == 0:
+            raise HTTPException(status_code=400, detail="Аудиофайл пуст.")
         if data.ndim > 1:
             data = data[:, 0]
-            
+
         data = data - np.mean(data)
         peak = np.max(np.abs(data))
-        
         if peak > 0.0001:
-            gain = target_gain / peak
-            data = data * gain
-            data = np.clip(data, -0.99, 0.99)
+            data = np.clip(data * (target_gain / peak), -0.99, 0.99)
 
         out_bio = io.BytesIO()
         sf.write(out_bio, data, sr, format="WAV", subtype="PCM_16")
         return Response(content=out_bio.getvalue(), media_type="audio/wav")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка нормализации: {str(e)}")
-    finally:
-        clear_vram()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Audio normalization failed")
+        raise HTTPException(status_code=500, detail=f"Ошибка нормализации: {str(exc)}")
 
 @app.post("/api/isolate_vocal")
-async def api_isolate_vocal(
+def api_isolate_vocal(
     audio: UploadFile = File(...),
     shifts: int = Form(2)
 ):
-    print(f"[Demucs] Старт очистки вокала | Качество (shifts): {shifts}x")
+    if not 1 <= shifts <= 10:
+        raise HTTPException(status_code=400, detail="shifts должен быть в диапазоне 1–10.")
+    device = "cpu"
     try:
-        raw_bytes = await audio.read()
+        raw_bytes = audio.file.read()
         in_bio = io.BytesIO(raw_bytes)
-        
         from demucs.pretrained import get_model
         from demucs.apply import apply_model
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = get_model("htdemucs")
-        model.to(device)
-        model.eval()
+        with generation_lock:
+            model = get_model("htdemucs")
+            model.to(device)
+            model.eval()
 
-        wav, orig_sr = torchaudio.load(in_bio)
-        if wav.shape[0] == 1:
-            wav_stereo = wav.repeat(2, 1)
-        else:
-            wav_stereo = wav[:2, :]
+            wav, orig_sr = torchaudio.load(in_bio)
+            if wav.shape[0] == 1:
+                wav_stereo = wav.repeat(2, 1)
+            else:
+                wav_stereo = wav[:2, :]
 
-        if orig_sr != model.samplerate:
-            resample_to_model = torchaudio.transforms.Resample(orig_sr, model.samplerate)
-            wav_input = resample_to_model(wav_stereo)
-        else:
-            wav_input = wav_stereo
+            if orig_sr != model.samplerate:
+                resample_to_model = torchaudio.transforms.Resample(orig_sr, model.samplerate)
+                wav_input = resample_to_model(wav_stereo)
+            else:
+                wav_input = wav_stereo
 
-        wav_input = wav_input.to(device)
+            wav_input = wav_input.to(device)
+            with torch.no_grad():
+                sources = apply_model(
+                    model, wav_input[None], device=device,
+                    shifts=shifts, split=True, progress=False
+                )[0]
 
-        with torch.no_grad():
-            sources = apply_model(model, wav_input[None], device=device, shifts=shifts, split=True, progress=False)[0]
+            vocal_idx = model.sources.index("vocals")
+            vocals = sources[vocal_idx]
+            vocal_mono = vocals[0:1, :]
+            if orig_sr != model.samplerate:
+                resample_back = torchaudio.transforms.Resample(model.samplerate, orig_sr).to(device)
+                vocal_mono = resample_back(vocal_mono)
 
-        vocal_idx = model.sources.index("vocals")
-        vocals = sources[vocal_idx]
-        vocal_mono = vocals[0:1, :]
+            vocal_np = vocal_mono.squeeze(0).cpu().numpy()
+            out_bio = io.BytesIO()
+            sf.write(out_bio, vocal_np, orig_sr, format="WAV", subtype="PCM_16")
 
-        if orig_sr != model.samplerate:
-            resample_back = torchaudio.transforms.Resample(model.samplerate, orig_sr).to(device)
-            vocal_mono = resample_back(vocal_mono)
-
-        vocal_np = vocal_mono.squeeze(0).cpu().numpy()
-
-        out_bio = io.BytesIO()
-        sf.write(out_bio, vocal_np, orig_sr, format="WAV", subtype="PCM_16")
-
-        del model, wav, wav_stereo, wav_input, sources, vocals, vocal_mono
         return Response(content=out_bio.getvalue(), media_type="audio/wav")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка очистки голоса: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Demucs vocal isolation failed")
+        raise HTTPException(status_code=500, detail=f"Ошибка очистки голоса: {str(exc)}")
     finally:
-        clear_vram()
+        if device == "cuda":
+            clear_vram()
 
 def convert_to_clean_wav(input_bytes: bytes) -> bytes:
     if not os.path.isfile(FFMPEG_PATH):
@@ -1196,53 +1206,45 @@ def convert_to_clean_wav(input_bytes: bytes) -> bytes:
     timestamp = int(time.time() * 1000)
     temp_in = os.path.join(TEMP_DIR, f"raw_in_{timestamp}")
     temp_out = os.path.join(TEMP_DIR, f"clean_out_{timestamp}.wav")
-
     try:
-        with open(temp_in, "wb") as f:
-            f.write(input_bytes)
+        with open(temp_in, "wb") as stream:
+            stream.write(input_bytes)
 
         cmd = [
-            FFMPEG_PATH,
-            "-y",
-            "-i", temp_in,
-            "-ar", "24000",
-            "-ac", "1",
-            "-c:a", "pcm_s16le",
-            temp_out
+            FFMPEG_PATH, "-y", "-i", temp_in,
+            "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", temp_out
         ]
+        try:
+            result = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("FFmpeg превысил время обработки (120 секунд).") from exc
 
-        res = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        if result.returncode != 0 or not os.path.isfile(temp_out):
+            error_message = result.stderr.decode("utf-8", errors="ignore")[-500:]
+            raise RuntimeError(f"FFmpeg decode error: {error_message}")
 
-        if res.returncode != 0 or not os.path.isfile(temp_out):
-            err_msg = res.stderr.decode("utf-8", errors="ignore")[-500:]
-            raise RuntimeError(f"FFmpeg decode error: {err_msg}")
-
-        with open(temp_out, "rb") as f:
-            return f.read()
-
+        with open(temp_out, "rb") as stream:
+            return stream.read()
     finally:
-        for p in (temp_in, temp_out):
-            if os.path.exists(p):
+        for path in (temp_in, temp_out):
+            if os.path.exists(path):
                 try:
-                    os.remove(p)
+                    os.remove(path)
                 except OSError:
                     pass
 
 @app.post("/api/convert_to_telegram_ogg")
-async def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
+def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
     if not os.path.isfile(FFMPEG_PATH):
         raise HTTPException(status_code=500, detail=f"FFmpeg не найден: {FFMPEG_PATH}")
 
     temp_wav = os.path.join(TEMP_DIR, f"conv_{int(time.time()*1000)}.wav")
     temp_ogg = os.path.join(TEMP_DIR, f"conv_{int(time.time()*1000)}.ogg")
-
     try:
-        with open(temp_wav, "wb") as f:
-            f.write(await audio.read())
+        with open(temp_wav, "wb") as stream:
+            stream.write(audio.file.read())
 
         cmd = [
             FFMPEG_PATH, "-y", "-i", temp_wav,
@@ -1251,22 +1253,31 @@ async def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
             "-application", "voip", "-ar", "48000", "-ac", "1",
             temp_ogg
         ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if res.returncode != 0:
-            raise RuntimeError(f"FFmpeg error: {res.stderr[-200:]}")
+        try:
+            result = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, timeout=120
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(status_code=504, detail="FFmpeg превысил время обработки (120 секунд).") from exc
 
-        with open(temp_ogg, "rb") as f:
-            ogg_bytes = f.read()
-
+        if result.returncode != 0:
+            raise RuntimeError(f"FFmpeg error: {result.stderr[-200:]}")
+        with open(temp_ogg, "rb") as stream:
+            ogg_bytes = stream.read()
         return Response(content=ogg_bytes, media_type="audio/ogg")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка конвертации: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Telegram OGG conversion failed")
+        raise HTTPException(status_code=500, detail=f"Ошибка конвертации: {str(exc)}")
     finally:
-        for p in [temp_wav, temp_ogg]:
-            if os.path.exists(p):
-                try: os.remove(p)
-                except Exception: pass
-        clear_vram()
+        for path in (temp_wav, temp_ogg):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 @app.post("/api/test_draft_tts")
 async def api_test_draft_tts(
@@ -1284,7 +1295,7 @@ async def api_test_draft_tts(
     if voice_file:
         try:
             raw_draft = await voice_file.read()
-            clean_draft = convert_to_clean_wav(raw_draft)
+            clean_draft = await asyncio.to_thread(convert_to_clean_wav, raw_draft)
         except RuntimeError as e:
             print(f"[Draft Audio Convert Error] {e}")
             raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")
@@ -1360,30 +1371,40 @@ async def api_save_character(
     if not char_id:
         raise HTTPException(status_code=400, detail="Недопустимый ID персонажа.")
 
-    char_dir = os.path.join(CHARACTERS_DIR, char_id)
-    os.makedirs(char_dir, exist_ok=True)
-
-    voice_path = os.path.join(char_dir, "voice.wav")
+    clean_wav = None
     if voice_file:
         try:
             raw_voice = await voice_file.read()
-            clean_wav = convert_to_clean_wav(raw_voice)
-        except RuntimeError as e:
-            print(f"[Save Character Audio Error] {e}")
+            clean_wav = await asyncio.to_thread(convert_to_clean_wav, raw_voice)
+        except RuntimeError as exc:
+            logger.warning("Character voice conversion failed: %s", exc)
             raise HTTPException(status_code=400, detail="Не удалось обработать аудиофайл. Проверьте формат.")
 
-        with open(voice_path, "wb") as f:
-            f.write(clean_wav)
-
-    avatar_path = os.path.join(char_dir, "avatar.png")
+    avatar_bytes = None
     if avatar_file:
-        with open(avatar_path, "wb") as f:
-            f.write(await avatar_file.read())
+        avatar_bytes = await avatar_file.read()
+        if not (
+            avatar_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+            or avatar_bytes.startswith(b"\xff\xd8\xff")
+        ):
+            raise HTTPException(status_code=400, detail="Аватар должен быть файлом PNG или JPEG.")
 
     try:
         theme = json.loads(theme_json)
-    except Exception:
+        if not isinstance(theme, dict):
+            raise ValueError("theme must be an object")
+    except (TypeError, ValueError):
         theme = DEFAULT_PRESET["theme"]
+
+    char_dir = os.path.join(CHARACTERS_DIR, char_id)
+    os.makedirs(char_dir, exist_ok=True)
+    voice_path = os.path.join(char_dir, "voice.wav")
+    avatar_path = os.path.join(char_dir, "avatar.png")
+
+    if clean_wav is not None:
+        write_bytes_atomic(voice_path, clean_wav)
+    if avatar_bytes is not None:
+        write_bytes_atomic(avatar_path, avatar_bytes)
 
     with get_file_lock(PRESETS_FILE):
         presets = load_presets()
@@ -1395,8 +1416,14 @@ async def api_save_character(
         }
         save_presets(presets)
 
+    if clean_wav is not None:
+        for cache_key in list(PROMPT_CACHE):
+            if cache_key.startswith(voice_path + "_"):
+                PROMPT_CACHE.pop(cache_key, None)
+
     if not get_active_character_id():
-        set_active_character_id(char_id)
+        with get_file_lock(ACTIVE_FILE):
+            set_active_character_id(char_id)
 
     return {"status": "ok", "char_id": char_id}
 

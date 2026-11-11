@@ -12,6 +12,14 @@ def test_monitor_launcher_tray_and_backend_lifecycle():
     assert "stderr=subprocess.STDOUT" in source
     assert "Win32TrayIcon" in source
     assert "Shell_NotifyIconW" in source
+    assert "CreateWindowExW.argtypes" in source
+    assert "RegisterClassW.argtypes" in source
+    assert "GetMessageW.argtypes" in source
+    assert "Shell_NotifyIconW.argtypes" in source
+    assert "CreateMutexW.argtypes" in source
+    assert "GetLastError.restype" in source
+    assert "Ошибка цикла сообщений системного трея" in source
+    assert "LoadIconW(None" not in source
     assert '"/launcher-start"' in source
     assert '"/open-dashboard"' in source
     assert "webbrowser.open(monitor_url, new=2)" in source

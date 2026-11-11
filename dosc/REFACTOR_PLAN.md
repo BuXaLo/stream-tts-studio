@@ -1,6 +1,6 @@
 # Backend: план доработок (инструкция для агента)
 
-Основан на статическом анализе `server/app.py`, `web/overlay/overlay.js`, `web/dashboard/app.js`, `builder.js` (базовый commit `21bc2d6f886771d6088a13f638e5f010e6513990`, ветка `dev`, на момент обновления плана). Runtime CosyVoice не проверялся. Перед началом каждого этапа заново фиксировать актуальный HEAD `dev` и использовать его как baseline этапа. Перед работой прочитай `AGENTS.md`: его правила приоритетнее этого плана.
+Базовый commit `dev`: `d1c6127459aed2f82edf16b945c25c539233d18e` (HEAD на момент обновления). Код анализировался на `11be77fb0051faf310e03e37b1818c3a3aecfdb2`; после него в `dev` менялась только документация. Runtime CosyVoice не проверялся. Перед началом каждого этапа заново фиксировать актуальный HEAD `dev` и использовать его как baseline этапа. Перед работой прочитай `AGENTS.md`: его правила приоритетнее этого плана.
 
 ## 0. Контекст и ограничения
 
@@ -33,18 +33,22 @@
 - [ ] Частота «Переподключение к сокету…» в консоли DA за 24 часа работы (нужна ли реакция на `{}`-ping Centrifugo).
 - [ ] Реальная форма события доната: один записанный образец без секретов (поля, типы `amount`, `message`).
 - [ ] Очереди экшенов Streamer.bot: общая ли блокирующая очередь для чата, награды, донатов, follow, raid (влияет на порядок озвучки и перебивание текста в оверлее).
+- [ ] Portable runtime: Python 3.10.11, 64-bit, embeddable-сборка с файлом `python310._pth`. `pytest` в portable Python отсутствует и устанавливать его туда не нужно.
+- [ ] В этой embeddable-сборке `sys.path` задаётся файлом `python310._pth`; папка запускаемого скрипта в него не входит. В путях указаны: `python310.zip`, `upy`, `upy/Lib/site-packages`, `cosyvoice3` (родитель), `cosyvoice3/cosyvoice`, `third_party`, `third_party/Matcha-TTS`, `third_party/Matcha-TTS/matcha`.
+- [ ] Тесты запускаются в отдельном dev-окружении (не в portable); `pytest.ini` содержит `pythonpath = server`.
 - [ ] Файл `.gitignore` отсутствует (подтверждено), данные пользователя (`config.json`, `da_*.json`, `presets.json`, `characters/`) в Git не отслеживаются, но ничем не защищены.
 
 ## S1. Хранилище данных
 
 **Проблема.** `save_*` открывают файл в режиме `"w"` (обрезают до записи), `load_*` при любой ошибке молча возвращают дефолт. Если `presets.json` читается в момент записи или повреждён, следующий `api_save_character` сохранит словарь из одного персонажа и затрёт остальных. То же для `da_tokens.json` (потеря refresh-токена).
 
-**Куда.** Новый `server/core/storage.py` (создать `server/core/__init__.py`). Затем заменить вызовы в `app.py`.
+**Куда.** Новый `server/studio/core/storage.py` (создать `server/studio/__init__.py` и `server/studio/core/__init__.py`). Затем заменить вызовы в `app.py`.
 
 **Задачи.**
+- [ ] Первым коммитом S1 создать `.gitignore` (до изменений хранилища). Добавить правила: `*.bak`, `*.tmp`, `server/*.bak`, `server/*.tmp`, `logs/`, `server/temp/`, `server/config.json`, `server/da_config.json`, `server/da_tokens.json`, `server/presets.json`, `server/active_character.json`, `characters/`, `server/fonts/custom/`. Перед добавлением сверить правила с `git ls-files`; не игнорировать и не исключать из Git файлы, которые должны оставаться отслеживаемыми.
 - [ ] `read_json(path, default, *, strict)`: при ошибке парсинга сначала пробовать `path + ".bak"`; для `presets.json` при двойной ошибке поднимать `StorageError`; для config/DA возвращать дефолт, **не перезаписывая файл**, с предупреждением в лог.
 - [ ] `write_json_atomic(path, data)`: временный файл в той же папке, `flush`, `os.fsync`, перед заменой копия предыдущей валидной версии в `.bak` (одно поколение), затем `os.replace`. На Windows при `PermissionError` повторить до 3 раз с паузой 50 мс.
-- [ ] Блокировка `threading.RLock` на каждый файл для цикла «прочитать → изменить → записать» в `api_save_character`, `api_delete_character`, `api_set_active`, `api_save_system_config`, `api_save_da_config`, DA-callback, `refresh_tokens`.
+- [ ] Для каждого файла использовать `threading.Lock` вокруг короткого синхронного участка «прочитать → изменить → записать» в `api_save_character`, `api_delete_character`, `api_set_active`, `api_save_system_config`, `api_save_da_config`, DA-callback, `refresh_tokens`. Внутри участка не должно быть `await`. Не использовать `threading.RLock` как защиту между корутинами одного потока: он реентерабелен для одного потока. В async-эндпоинтах сначала выполнить необходимые `await` (например, чтение `UploadFile`), затем войти в синхронный блок под локом.
 - [ ] Эндпоинты, использующие presets, при `StorageError` отвечают 503 с понятным текстом (`/speak` включительно), а не пустым словарём.
 - [ ] Формат файлов прежний: UTF-8, `ensure_ascii=False`, `indent=2`, те же имена.
 
@@ -76,7 +80,7 @@
 - [ ] После `sanitize_text` вырезать `U+200B`, `U+200D`, `U+FE0F`, `U+20E3`; если не осталось ни одной буквы или цифры, ответ 400 «Нет текста для озвучки» вместо запуска генерации.
 
 **3.3 Параметры.**
-- [ ] `speed`: диапазон 0.5–2.0 (или значение из персонажа); `speed=0` не считать «не задано». Лимит длины текста **не** вводить.
+- [ ] `speed`: клампить в диапазон 0.5–2.0 только значение, явно переданное в запросе (включая `speed=0`, которое считается переданным и после клампа становится 0.5). Если `speed` в запросе отсутствует, использовать значение из персонажа без изменения и без клампа: диапазон speed в UI персонажа пока не проверен. Лимит длины текста **не** вводить.
 
 **3.4 Оверлей.**
 - [ ] Функция `sanitize_overlay_text` (URL → «ссылка», та же регулярка, что в `sanitize_text`); применить во всех трёх `broadcast_sync`. Ключ `text` и схема события прежние. WAV по-прежнему генерируется из исходного текста.
@@ -84,7 +88,6 @@
 **3.5 Прочее.**
 - [ ] Ограничить размер `PROMPT_CACHE` (например, 64 записи, очистка при переполнении).
 - [ ] `logging` вместо `print` + `RotatingFileHandler` в `logs/studio.log` (консольный вывод сохранить).
-- [ ] Добавить `.gitignore`: `logs/`, `server/temp/`, `server/config.json`, `server/da_config.json`, `server/da_tokens.json`, `server/presets.json`, `server/active_character.json`, `characters/`, `server/fonts/custom/` (сверить с `git ls-files`; не игнорировать то, что отслеживается).
 
 **Не делать:** очередь с приоритетами и FIFO (меняет порядок алертов) — только отдельным обсуждением после S0.
 
@@ -141,16 +144,15 @@
 
 **Куда.** `api_trim_and_transcribe`, `api_normalize_audio`, `api_isolate_vocal`, `api_convert_to_telegram_ogg`, `api_test_draft_tts`, `api_save_character`, `convert_to_clean_wav`.
 
-- [ ] Заменить `async def` на `def` (поток выполняется в пуле), для чтения загрузок использовать `audio.file.read()`. Тогда эти операции больше не замораживают оверлей, DA и `/speak`.
+- [ ] Решать для каждого endpoint отдельно. Если единственный `await` в endpoint — чтение `UploadFile`, перевести его на `def` и читать через `audio.file.read()` (FastAPI выполнит синхронный endpoint в threadpool). `async` оставлять только при реальной необходимости в async I/O; тяжёлую синхронную работу внутри `async` выносить в `asyncio.to_thread`.
 - [ ] `subprocess.run(ffmpeg)` с `timeout` (например, 120 с), `TimeoutExpired` → понятная ошибка.
 - [ ] Whisper и Demucs выполнять под `generation_lock` (защита от OOM, если инструмент случайно запущен при работающей озвучке).
-- [ ] Не менять `async def` на `def` механически. Проверить каждый endpoint отдельно: если обработчик содержит `await` (например, чтение `UploadFile`), сохранить async-контракт и вынести блокирующую тяжёлую работу в threadpool/`asyncio.to_thread` там, где это уместно. Переводить endpoint на `def` только если внутри не остаётся `await` и синхронное чтение/обработка корректно для используемых объектов.
 - [ ] `clear_vram()` вызывать только там, где использовался GPU (Whisper, Demucs).
 - [ ] `shifts` ограничить 1–10, `target_gain` 0.1–1.0, `start/end` проверять до обработки.
 - [ ] `api_save_character`: сначала валидировать входные данные, затем писать `voice.wav` и `avatar.png` через временный файл + `os.replace`, и **только потом** обновлять `presets`. После замены голоса сбросить кэш для этого пути (см. S8).
 - [ ] Аватар: проверка сигнатуры (PNG/JPEG) и размера (значение согласовать).
 
-**Тесты:** функции вызываются синхронно (`def`), ответы прежние; `subprocess` по таймауту; запись голоса не оставляет частичный файл при сбое.
+**Тесты:** endpoints без реальной необходимости в async I/O работают как `def`; endpoint с реальным async I/O остаётся `async def`; чтение `UploadFile` через `audio.file.read()` проверено на соответствующих sync-endpoints; ответы прежние; `subprocess` по таймауту; запись голоса не оставляет частичный файл при сбое.
 
 ## S7. Разнесение `app.py` (только после S1–S6 и тестов)
 
@@ -158,23 +160,48 @@
 
 ```
 server/
-  app.py                  — вход: env, FastAPI, middleware, mount, include routers, __main__
-  core/env.py             — пути и os.environ (импортируется первым)
-  core/storage.py         — из S1
-  core/config.py          — DEFAULT_*, load/save config и DA-config
-  core/ws.py              — ConnectionManager, ws_manager
-  services/text.py        — num_to_ru_words, sanitize_text, sanitize_overlay_text (без torch)
-  services/tts_engine.py  — AutoModel, generation_lock, PROMPT_CACHE, generate_voice, clear_vram, numpy_to_wav
-  services/da_worker.py   — DonationAlertsWorker, parse_donation
-  services/audio_tools.py — Whisper, Demucs, normalize, convert_to_clean_wav, ogg
-  routes/                 — pages, system, da, characters, fonts, tools, speak (APIRouter)
-tests/                    — pytest, без GPU
+  app.py                    — вход: sys.path bootstrap, env, FastAPI, middleware, mount, routers, __main__
+  studio/
+    __init__.py
+    core/
+      __init__.py
+      env.py                — пути и os.environ (импортируется первым после bootstrap)
+      storage.py            — из S1
+      config.py             — DEFAULT_*, load/save config и DA-config
+      ws.py                 — ConnectionManager, ws_manager
+    services/
+      __init__.py
+      text.py               — num_to_ru_words, sanitize_text, sanitize_overlay_text (без torch)
+      tts_engine.py         — AutoModel, generation_lock, PROMPT_CACHE, generate_voice, clear_vram, numpy_to_wav
+      da_worker.py          — DonationAlertsWorker, parse_donation
+      audio_tools.py        — Whisper, Demucs, normalize, convert_to_clean_wav, ogg
+    routes/
+      __init__.py
+      pages.py, system.py, da.py, characters.py, fonts.py, tools.py, speak.py (APIRouter)
+tests/                      — pytest, без GPU
+pytest.ini                  — pythonpath = server
 ```
 
-Порядок переноса: `text` → `storage/config` → `ws` → `da_worker` → `audio_tools` → `tts_engine` → `routes`. Модель загружается при старте как сейчас (до `uvicorn.run`). Тесты роутов используют заглушку `tts_engine`. Зависимости тестов ставятся в отдельное dev-окружение, не в portable.
+Первым действием в `app.py`, до импорта любых собственных пакетов и `studio.core.env`, выполнить bootstrap стандартными модулями:
 
-**Приёмка этапа:** diff — только перемещения и импорты; baseline-чеклист проходит; в `dosc/ARCHITECTURE.md` обновлена карта модулей. Проверить импорты и запуск приложения именно штатным `start_server.bat` (который запускает `python -u server\\app.py`), а не только запуск тестового модуля или `uvicorn` из другого рабочего каталога.
+```python
+import os
+import sys
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SERVER_DIR)
+```
 
+Это обязательно для embeddable Python: каталог скрипта не добавляется в `sys.path` автоматически. После bootstrap импортировать `studio.core.env`, выставить переменные окружения до импорта `torch`. Существующий `sys.path.append(COSY_DIR)` сохранить без изменения.
+
+Импорты внутренних модулей выполнять через пакет `studio`, например: `from studio.services.text import sanitize_text`. Не создавать `server/core`, `server/services` и `server/routes` как верхнеуровневые пакеты.
+
+В portable runtime в `sys.path` присутствует `cosyvoice` и его подпапки видны как модули верхнего уровня. Поэтому запрещено создавать собственные верхнеуровневые модули/пакеты с именами, совпадающими с подпапками CosyVoice: `utils`, `cli`, `flow`, `llm`, `transformer`, `hifigan`, `dataset`, `tokenizer` и аналогичные. Перед созданием любого нового верхнего import-имени проверять его через `importlib.util.find_spec` именно в portable Python. По текущей проверке имена `studio`, `core`, `services`, `routes`, `tests` свободны, `utils` занято (`cosyvoice/utils`).
+
+Порядок переноса: `studio.services.text` → `studio.core.storage/config` → `studio.core.ws` → `studio.services.da_worker` → `studio.services.audio_tools` → `studio.services.tts_engine` → `studio.routes`. Модель загружается при старте как сейчас (до `uvicorn.run`). Тесты роутов используют заглушку `studio.services.tts_engine`. Зависимости тестов ставятся в отдельное dev-окружение, не в portable; `pytest.ini` задаёт `pythonpath = server`.
+
+Тесты запускаются только в отдельном dev-окружении. Portable Python 3.10.11 используется для проверки импорта/запуска приложения, а не для установки pytest.
+
+**Приёмка этапа:** diff — только перемещения и импорты; baseline-чеклист проходит; в `dosc/ARCHITECTURE.md` обновлена карта модулей. Проверить импорты в embeddable-окружении и запуск штатным `start_server.bat` на копии portable-установки (не на рабочем runtime). В батнике запускается `python -u server\app.py`; проверить именно этот путь запуска, а не только тестовый модуль или `uvicorn` из другого рабочего каталога.
 ## S7b. Разнесение `builder.js` (необязательный последний этап)
 
 Выполнять только после завершения и стабилизации основных этапов, если дальнейшая поддержка `builder.js` действительно требует разделения. До любых перемещений сохранить эталонный результат генерации C# для **каждого** шаблона при фиксированных входных данных (включая граничные значения и необязательные поля). Эталоны хранить в тестовых fixtures.

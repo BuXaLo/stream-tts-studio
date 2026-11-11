@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+if SERVER_DIR not in sys.path:
+    sys.path.insert(0, SERVER_DIR)
 import io
 import re
 import gc
@@ -19,6 +22,8 @@ from typing import Optional, List
 
 import requests
 import websockets
+
+from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -113,19 +118,11 @@ DEFAULT_CONFIG = {
 }
 
 def load_config() -> dict:
-    if not os.path.exists(CONFIG_FILE):
-        save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
-    try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-            return {**DEFAULT_CONFIG, **cfg}
-    except Exception:
-        return DEFAULT_CONFIG.copy()
+    cfg = read_json(CONFIG_FILE, DEFAULT_CONFIG, strict=False)
+    return {**DEFAULT_CONFIG, **cfg} if isinstance(cfg, dict) else DEFAULT_CONFIG.copy()
 
 def save_config(cfg: dict):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    write_json_atomic(CONFIG_FILE, cfg)
 
 # ==================== DONATIONALERTS ХРАНИЛИЩЕ ====================
 DEFAULT_DA_CONFIG = {
@@ -137,32 +134,18 @@ DEFAULT_DA_CONFIG = {
 }
 
 def load_da_config() -> dict:
-    if not os.path.exists(DA_CONFIG_FILE):
-        save_da_config(DEFAULT_DA_CONFIG)
-        return DEFAULT_DA_CONFIG.copy()
-    try:
-        with open(DA_CONFIG_FILE, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-            return {**DEFAULT_DA_CONFIG, **cfg}
-    except Exception:
-        return DEFAULT_DA_CONFIG.copy()
+    cfg = read_json(DA_CONFIG_FILE, DEFAULT_DA_CONFIG, strict=False)
+    return {**DEFAULT_DA_CONFIG, **cfg} if isinstance(cfg, dict) else DEFAULT_DA_CONFIG.copy()
 
 def save_da_config(cfg: dict):
-    with open(DA_CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    write_json_atomic(DA_CONFIG_FILE, cfg)
 
 def load_da_tokens() -> Optional[dict]:
-    if not os.path.exists(DA_TOKENS_FILE):
-        return None
-    try:
-        with open(DA_TOKENS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+    tokens = read_json(DA_TOKENS_FILE, None, strict=False)
+    return tokens if isinstance(tokens, dict) else None
 
 def save_da_tokens(tokens: dict):
-    with open(DA_TOKENS_FILE, "w", encoding="utf-8") as f:
-        json.dump(tokens, f, ensure_ascii=False, indent=2)
+    write_json_atomic(DA_TOKENS_FILE, tokens)
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
 class ConnectionManager:
@@ -224,7 +207,8 @@ class DonationAlertsWorker:
             resp = requests.post(DA_TOKEN_URL, data=payload, timeout=10)
             if resp.status_code == 200:
                 tokens = resp.json()
-                save_da_tokens(tokens)
+                with get_file_lock(DA_TOKENS_FILE):
+                    save_da_tokens(tokens)
                 return tokens
         except Exception:
             pass
@@ -452,31 +436,27 @@ DEFAULT_PRESET = {
 }
 
 def load_presets() -> dict:
-    if not os.path.exists(PRESETS_FILE):
-        return {}
     try:
-        with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+        presets = read_json(PRESETS_FILE, {}, strict=True)
+    except StorageError as exc:
+        logging.getLogger(__name__).error("Не удалось прочитать presets.json или его резервную копию: %s", exc)
+        raise HTTPException(status_code=503, detail="Файл персонажей повреждён. Сохранение отключено до восстановления.")
+    if not isinstance(presets, dict):
+        raise HTTPException(status_code=503, detail="Файл персонажей имеет неверный формат.")
+    return presets
 
 def save_presets(data: dict):
-    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    write_json_atomic(PRESETS_FILE, data)
 
 def get_active_character_id() -> str:
-    if os.path.exists(ACTIVE_FILE):
-        try:
-            with open(ACTIVE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f).get("active", "")
-        except Exception:
-            pass
+    active = read_json(ACTIVE_FILE, {"active": ""}, strict=False)
+    if isinstance(active, dict) and isinstance(active.get("active", ""), str) and active.get("active"):
+        return active["active"]
     presets = load_presets()
     return list(presets.keys())[0] if presets else ""
 
 def set_active_character_id(char_id: str):
-    with open(ACTIVE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"active": char_id}, f, ensure_ascii=False, indent=2)
+    write_json_atomic(ACTIVE_FILE, {"active": char_id})
 
 def clear_vram():
     if torch.cuda.is_available():
@@ -659,12 +639,13 @@ def api_get_system_config():
 
 @app.post("/api/system_config")
 def api_save_system_config(data: dict):
-    cfg = load_config()
-    if "host" in data: cfg["host"] = str(data["host"]).strip()
-    if "port" in data: cfg["port"] = int(data["port"])
-    if "n_timesteps" in data: cfg["n_timesteps"] = max(4, min(15, int(data["n_timesteps"])))
-    if "auto_open_browser" in data: cfg["auto_open_browser"] = bool(data["auto_open_browser"])
-    save_config(cfg)
+    with get_file_lock(CONFIG_FILE):
+        cfg = load_config()
+        if "host" in data: cfg["host"] = str(data["host"]).strip()
+        if "port" in data: cfg["port"] = int(data["port"])
+        if "n_timesteps" in data: cfg["n_timesteps"] = max(4, min(15, int(data["n_timesteps"])))
+        if "auto_open_browser" in data: cfg["auto_open_browser"] = bool(data["auto_open_browser"])
+        save_config(cfg)
     return {"status": "ok", "config": cfg}
 
 # ==================== DONATIONALERTS API ====================
@@ -683,13 +664,14 @@ def api_get_da_config():
 
 @app.post("/api/da/config")
 def api_save_da_config(data: dict):
-    da_cfg = load_da_config()
-    if "enabled" in data: da_cfg["enabled"] = bool(data["enabled"])
-    if "client_id" in data: da_cfg["client_id"] = str(data["client_id"]).strip()
-    if "client_secret" in data: da_cfg["client_secret"] = str(data["client_secret"]).strip()
-    if "streamerbot_url" in data: da_cfg["streamerbot_url"] = str(data["streamerbot_url"]).strip()
-    if "streamerbot_action" in data: da_cfg["streamerbot_action"] = str(data["streamerbot_action"]).strip()
-    save_da_config(da_cfg)
+    with get_file_lock(DA_CONFIG_FILE):
+        da_cfg = load_da_config()
+        if "enabled" in data: da_cfg["enabled"] = bool(data["enabled"])
+        if "client_id" in data: da_cfg["client_id"] = str(data["client_id"]).strip()
+        if "client_secret" in data: da_cfg["client_secret"] = str(data["client_secret"]).strip()
+        if "streamerbot_url" in data: da_cfg["streamerbot_url"] = str(data["streamerbot_url"]).strip()
+        if "streamerbot_action" in data: da_cfg["streamerbot_action"] = str(data["streamerbot_action"]).strip()
+        save_da_config(da_cfg)
     return {"status": "ok", "config": da_cfg}
 
 @app.get("/api/da/auth_url")
@@ -776,10 +758,11 @@ def get_presets_list():
 @app.post("/api/presets/set_active")
 def api_set_active(data: dict):
     char_id = data.get("id")
-    presets = load_presets()
-    if char_id not in presets:
-        raise HTTPException(status_code=404, detail="Персонаж не найден.")
-    set_active_character_id(char_id)
+    with get_file_lock(PRESETS_FILE):
+        presets = load_presets()
+        if char_id not in presets:
+            raise HTTPException(status_code=404, detail="Персонаж не найден.")
+        set_active_character_id(char_id)
     return {"status": "ok", "active": char_id}
 
 @app.get("/api/active_overlay_config")
@@ -1188,14 +1171,15 @@ async def api_save_character(
     except Exception:
         theme = DEFAULT_PRESET["theme"]
 
-    presets = load_presets()
-    presets[char_id] = {
-        "name": name,
-        "reference_text": reference_text,
-        "speed": speed,
-        "theme": theme
-    }
-    save_presets(presets)
+    with get_file_lock(PRESETS_FILE):
+        presets = load_presets()
+        presets[char_id] = {
+            "name": name,
+            "reference_text": reference_text,
+            "speed": speed,
+            "theme": theme
+        }
+        save_presets(presets)
 
     if not get_active_character_id():
         set_active_character_id(char_id)
@@ -1204,10 +1188,14 @@ async def api_save_character(
 
 @app.delete("/api/characters/{char_id}")
 def api_delete_character(char_id: str):
-    presets = load_presets()
+    with get_file_lock(PRESETS_FILE):
+        presets = load_presets()
+        if char_id in presets:
+            del presets[char_id]
+            save_presets(presets)
+        else:
+            return {"status": "ok"}
     if char_id in presets:
-        del presets[char_id]
-        save_presets(presets)
         char_dir = os.path.join(CHARACTERS_DIR, char_id)
         if os.path.exists(char_dir):
             shutil.rmtree(char_dir, ignore_errors=True)

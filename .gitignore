@@ -1,0 +1,13 @@
+*.bak
+*.tmp
+server/*.bak
+server/*.tmp
+logs/
+server/temp/
+server/config.json
+server/da_config.json
+server/da_tokens.json
+server/presets.json
+server/active_character.json
+characters/
+server/fonts/custom/

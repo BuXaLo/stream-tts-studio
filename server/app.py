@@ -1483,17 +1483,17 @@ async def api_save_character(
 def api_delete_character(char_id: str):
     with get_file_lock(PRESETS_FILE):
         presets = load_presets()
-        if char_id in presets:
-            del presets[char_id]
-            save_presets(presets)
-        else:
+        if char_id not in presets:
             return {"status": "ok"}
+        del presets[char_id]
+        save_presets(presets)
+        with get_file_lock(ACTIVE_FILE):
+            if get_active_character_id() == char_id:
+                set_active_character_id(list(presets.keys())[0] if presets else "")
+
     char_dir = os.path.join(CHARACTERS_DIR, char_id)
     if os.path.exists(char_dir):
         shutil.rmtree(char_dir, ignore_errors=True)
-    if get_active_character_id() == char_id:
-        with get_file_lock(ACTIVE_FILE):
-            set_active_character_id(list(presets.keys())[0] if presets else "")
     return {"status": "ok"}
 
 class SpeakRequest(BaseModel):

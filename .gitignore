@@ -11,3 +11,7 @@ server/presets.json
 server/active_character.json
 characters/
 server/fonts/custom/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage

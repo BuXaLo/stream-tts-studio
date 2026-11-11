@@ -8,7 +8,7 @@ on:
 
 jobs:
   python:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,7 +18,7 @@ jobs:
       - run: python -m compileall -q server tests
       - run: python -m pytest -q
   javascript:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

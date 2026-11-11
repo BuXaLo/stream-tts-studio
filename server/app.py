@@ -30,11 +30,11 @@ import websockets
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 from studio.core.config import ConfigStore
 from studio.core.ws import ConnectionManager, ws_manager
-from studio.services.donations import parse_donation
 from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
 from studio.core.validation import is_valid_bind_host, same_origin
 from studio.core.validation import validate_port
 from studio.services.streamerbot import send_donation_to_streamerbot
+from studio.services.da_worker import DA_AUTH_URL, DonationAlertsWorker, configure_worker
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -133,8 +133,6 @@ async def verify_request_origin(request, call_next):
             return JSONResponse(status_code=403, content={"detail": "Origin не совпадает с адресом студии."})
     return await call_next(request)
 
-PROMPT_CACHE = {}
-
 config_store = ConfigStore(SERVER_DIR)
 load_config = config_store.load_config
 save_config = config_store.save_config
@@ -142,276 +140,13 @@ load_da_config = config_store.load_da_config
 save_da_config = config_store.save_da_config
 load_da_tokens = config_store.load_da_tokens
 save_da_tokens = config_store.save_da_tokens
+configure_worker(SERVER_DIR, LOG_DIR, load_config, load_da_config, load_da_tokens, save_da_tokens)
+from studio.services.tts_engine import PROMPT_CACHE, clear_vram, configure_tts, generate_voice
+configure_tts(cosyvoice, generation_lock, load_config, logger)
+from studio.services.audio_tools import configure_audio_tools, convert_to_clean_wav
+configure_audio_tools(FFMPEG_PATH, TEMP_DIR)
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
-
-
-# ==================== DONATIONALERTS ASYNC РАБОТНИК ====================
-DA_AUTH_URL = "https://www.donationalerts.com/oauth/authorize"
-DA_TOKEN_URL = "https://www.donationalerts.com/oauth/token"
-DA_USER_API_URL = "https://www.donationalerts.com/api/v1/user/oauth"
-DA_SUBSCRIBE_API_URL = "https://www.donationalerts.com/api/v1/centrifuge/subscribe"
-DA_CENTRIFUGO_WS_URL = "wss://centrifugo.donationalerts.com/connection/websocket"
-DA_SCOPES = "oauth-donation-subscribe oauth-user-show"
-
-_failed_donations_lock = threading.Lock()
-FAILED_DONATIONS_FILE = os.path.join(LOG_DIR, "streamerbot_failed_donations.jsonl")
-
-
-class DonationAlertsWorker:
-    def __init__(self):
-        self.task: Optional[asyncio.Task] = None
-        self.is_connected = False
-        self.authorized_user = ""
-        self.last_error = ""
-
-    def get_redirect_uri(self) -> str:
-        cfg = load_config()
-        port = cfg.get("port", 8765)
-        return f"http://127.0.0.1:{port}/api/da/callback"
-
-    def refresh_tokens(self, refresh_token: str, client_id: str, client_secret: str) -> Optional[dict]:
-        payload = {
-            "grant_type": "refresh_token",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "scope": DA_SCOPES
-        }
-        try:
-            resp = requests.post(DA_TOKEN_URL, data=payload, timeout=10)
-            if resp.status_code != 200:
-                logging.getLogger(__name__).warning(
-                    "DonationAlerts token refresh failed: HTTP %s (%s)",
-                    resp.status_code, resp.text[:300]
-                )
-                return None
-            tokens = resp.json()
-            with get_file_lock(DA_TOKENS_FILE):
-                save_da_tokens(tokens)
-            return tokens
-        except Exception:
-            logging.getLogger(__name__).exception("DonationAlerts token refresh request failed")
-            return None
-
-    def get_access_token(self):
-        tokens = load_da_tokens()
-        da_cfg = load_da_config()
-        if not tokens or not da_cfg.get("client_id") or not da_cfg.get("client_secret"):
-            self.last_error = "Требуется авторизация OAuth"
-            return None
-
-        def fetch_profile(access_token):
-            response = requests.get(
-                DA_USER_API_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-                timeout=8
-            )
-            if response.status_code == 200:
-                profile = response.json().get("data")
-                if isinstance(profile, dict):
-                    return profile
-            return response
-
-        try:
-            access_token = tokens.get("access_token")
-            profile = fetch_profile(access_token)
-            if isinstance(profile, requests.Response) and profile.status_code == 401 and tokens.get("refresh_token"):
-                refreshed = self.refresh_tokens(
-                    tokens["refresh_token"], da_cfg["client_id"], da_cfg["client_secret"]
-                )
-                if not refreshed:
-                    self.last_error = "OAuth-токен DonationAlerts истёк. Требуется повторная авторизация."
-                    return None
-                access_token = refreshed.get("access_token")
-                profile = fetch_profile(access_token)
-
-            if isinstance(profile, requests.Response):
-                self.last_error = f"DonationAlerts временно недоступен (HTTP {profile.status_code})."
-                return None
-
-            if not profile.get("id") or not profile.get("socket_connection_token"):
-                self.last_error = "DonationAlerts вернул неполный профиль пользователя."
-                return None
-
-            self.authorized_user = str(profile.get("name") or "")
-            return access_token, profile
-        except requests.exceptions.RequestException as exc:
-            self.last_error = f"DonationAlerts временно недоступен: {exc}"
-            return None
-        except Exception as exc:
-            self.last_error = f"Ошибка ответа DonationAlerts: {exc}"
-            return None
-
-    def _journal_failed_donation(self, donor, amount, currency, message, reason, status_code, attempts):
-        record = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "donor": str(donor),
-            "amount": amount,
-            "currency": str(currency),
-            "message": str(message),
-            "reason": str(reason),
-            "status_code": status_code,
-            "attempts": attempts
-        }
-        try:
-            with _failed_donations_lock:
-                os.makedirs(LOG_DIR, exist_ok=True)
-                with open(FAILED_DONATIONS_FILE, "a", encoding="utf-8") as stream:
-                    stream.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except Exception:
-            logging.getLogger(__name__).exception("Не удалось записать журнал неотправленного доната")
-
-    def send_to_streamerbot(self, donor: str, amount: float, currency: str, message: str):
-        return send_donation_to_streamerbot(
-            donor, amount, currency, message,
-            load_da_config=load_da_config,
-            journal_failed=self._journal_failed_donation,
-        )
-
-    async def run_loop(self):
-        reconnect_delays = (5, 10, 30, 60)
-        reconnect_index = 0
-
-        while True:
-            da_cfg = await asyncio.to_thread(load_da_config)
-            if not da_cfg.get("enabled", False):
-                self.is_connected = False
-                await asyncio.sleep(1)
-                continue
-
-            auth_result = await asyncio.to_thread(self.get_access_token)
-            if not auth_result:
-                self.is_connected = False
-                self.last_error = self.last_error or "DonationAlerts временно недоступен."
-                delay = reconnect_delays[reconnect_index]
-                reconnect_index = min(reconnect_index + 1, len(reconnect_delays) - 1)
-                logging.getLogger(__name__).warning(
-                    "DonationAlerts connection unavailable; retry in %ss: %s", delay, self.last_error
-                )
-                await asyncio.sleep(delay)
-                continue
-
-            access_token, profile = auth_result
-            try:
-                user_id = profile["id"]
-                socket_token = profile["socket_connection_token"]
-                channel = f"$alerts:donation_{user_id}"
-
-                async with websockets.connect(
-                    DA_CENTRIFUGO_WS_URL, ping_interval=20, ping_timeout=10
-                ) as ws:
-                    await ws.send(json.dumps({"params": {"token": socket_token}, "id": 1}))
-                    connect_res = json.loads(await ws.recv())
-                    client_id = connect_res.get("result", {}).get("client")
-                    if not client_id:
-                        raise RuntimeError(f"Ошибка авторизации Centrifugo: {connect_res}")
-
-                    sub_response = await asyncio.to_thread(
-                        requests.post,
-                        DA_SUBSCRIBE_API_URL,
-                        headers={
-                            "Authorization": f"Bearer {access_token}",
-                            "Content-Type": "application/json"
-                        },
-                        json={"channels": [channel], "client": client_id},
-                        timeout=10
-                    )
-                    sub_response.raise_for_status()
-                    sub_data = sub_response.json()
-                    sub_token = next(
-                        (item.get("token") for item in sub_data.get("channels", [])
-                         if item.get("channel") == channel),
-                        None
-                    )
-                    if not sub_token:
-                        raise RuntimeError("Не удалось получить токен подписки на канал алертов")
-
-                    await ws.send(json.dumps({
-                        "params": {"channel": channel, "token": sub_token},
-                        "method": 1,
-                        "id": 2
-                    }))
-                    sub_res = json.loads(await ws.recv())
-                    if "error" in sub_res:
-                        raise RuntimeError(f"Ошибка подписки: {sub_res['error']}")
-
-                    self.is_connected = True
-                    self.last_error = ""
-                    reconnect_index = 0
-                    logging.getLogger(__name__).info(
-                        "Подключено к DA Centrifugo (аккаунт: %s)", self.authorized_user
-                    )
-
-                    while True:
-                        current_cfg = await asyncio.to_thread(load_da_config)
-                        if not current_cfg.get("enabled", False):
-                            break
-
-                        try:
-                            raw_msg = await asyncio.wait_for(ws.recv(), timeout=5)
-                        except asyncio.TimeoutError:
-                            continue
-
-                        if not raw_msg or not raw_msg.strip():
-                            continue
-
-                        for line in raw_msg.strip().split("\n"):
-                            line = line.strip()
-                            if not line or line == "{}":
-                                continue
-                            try:
-                                data = json.loads(line)
-                            except (TypeError, ValueError):
-                                logging.getLogger(__name__).warning("Пропущено некорректное JSON-событие DonationAlerts")
-                                continue
-
-                            payload_data = None
-                            if isinstance(data, dict):
-                                result_data = data.get("result", {}).get("data", {})
-                                push_data = data.get("push", {}).get("pub", {})
-                                if isinstance(result_data, dict):
-                                    payload_data = result_data.get("data")
-                                if payload_data is None and isinstance(push_data, dict):
-                                    payload_data = push_data.get("data")
-
-                            donation = parse_donation(payload_data)
-                            if donation is None:
-                                if payload_data is not None:
-                                    logging.getLogger(__name__).warning(
-                                        "Пропущено некорректное событие доната DonationAlerts"
-                                    )
-                                continue
-
-                            logging.getLogger(__name__).info(
-                                "Получен донат: %s, %s %s", donation["donor"],
-                                donation["amount"], donation["currency"]
-                            )
-                            result = await asyncio.to_thread(
-                                self.send_to_streamerbot,
-                                donation["donor"], donation["amount"],
-                                donation["currency"], donation["message"]
-                            )
-                            if not result["success"]:
-                                logging.getLogger(__name__).error(
-                                    "Донат не передан в Streamer.bot: %s", result["error"]
-                                )
-
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                self.is_connected = False
-                self.last_error = str(exc)
-                delay = reconnect_delays[reconnect_index]
-                reconnect_index = min(reconnect_index + 1, len(reconnect_delays) - 1)
-                logging.getLogger(__name__).exception(
-                    "DonationAlerts reconnect in %ss", delay
-                )
-                await asyncio.sleep(delay)
-
-    def start(self):
-        if not self.task or self.task.done():
-            self.task = asyncio.create_task(self.run_loop())
 
 
 da_worker = DonationAlertsWorker()
@@ -428,38 +163,8 @@ app.mount("/char_files", StaticFiles(directory=CHARACTERS_DIR), name="char_files
 app.mount("/fonts", StaticFiles(directory=FONTS_DIR), name="fonts")
 app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
 app.mount("/overlay_static", StaticFiles(directory=OVERLAY_DIR), name="overlay_static")
-
-@app.get("/")
-def root():
-    return FileResponse(os.path.join(DASHBOARD_DIR, "index.html"))
-
-@app.get("/favicon.ico")
-def get_favicon():
-    fav_path = os.path.join(DASHBOARD_DIR, "favicon.ico")
-    if os.path.exists(fav_path):
-        return FileResponse(fav_path)
-    return Response(status_code=204)
-
-@app.get("/overlay")
-@app.get("/overlay/")
-def get_overlay_page():
-    return FileResponse(os.path.join(OVERLAY_DIR, "overlay.html"))
-
-@app.websocket("/ws/overlay")
-async def websocket_overlay(websocket: WebSocket):
-    origin = websocket.headers.get("origin")
-    host = websocket.headers.get("host", "")
-    if origin and not same_origin(origin, host, websocket.url.scheme):
-        await websocket.close(code=1008)
-        return
-    await ws_manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
-    except Exception:
-        ws_manager.disconnect(websocket)
+from studio.routes.pages import create_pages_router
+app.include_router(create_pages_router(DASHBOARD_DIR, OVERLAY_DIR, ws_manager, same_origin))
 
 DEFAULT_PRESET = {
     "name": "Новый персонаж",
@@ -506,112 +211,6 @@ def get_active_character_id() -> str:
 
 def set_active_character_id(char_id: str):
     write_json_atomic(ACTIVE_FILE, {"active": char_id})
-
-def clear_vram():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    gc.collect()
-
-def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
-    if len(audio) == 0:
-        return audio
-    audio = audio - np.mean(audio)
-    fade_len = int(sr * 0.010)
-    if len(audio) > fade_len * 2:
-        fade_in = 0.5 * (1 - np.cos(np.linspace(0, np.pi, fade_len)))
-        fade_out = 0.5 * (1 + np.cos(np.linspace(0, np.pi, fade_len)))
-        audio[:fade_len] *= fade_in
-        audio[-fade_len:] *= fade_out
-    return audio
-
-def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
-    audio = np.asarray(audio, dtype=np.float32)
-    audio = np.clip(audio, -1.0, 1.0)
-    pcm = (audio * 32767).astype(np.int16)
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(pcm.tobytes())
-    return buffer.getvalue()
-
-def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
-    global PROMPT_CACHE
-    cfg = load_config()
-    n_timesteps = int(cfg.get("n_timesteps", 6))
-
-    with generation_lock:
-        start_time = time.time()
-        clean_text = sanitize_text(raw_text)
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?…\n])\s+', clean_text) if s.strip()]
-        if not sentences:
-            sentences = [clean_text]
-
-        logger.info("TTS: старт генерации (%s предложений, %s steps)", len(sentences), n_timesteps)
-
-        with torch.inference_mode():
-            prompt_text = "You are a helpful assistant.<|endofprompt|>" + ref_text
-            
-            cache_key = f"{voice_wav_path}_{prompt_text}"
-            if cache_key in PROMPT_CACHE:
-                prompt_text_norm = PROMPT_CACHE[cache_key]
-            else:
-                prompt_text_norm = cosyvoice.frontend.text_normalize(prompt_text, split=False, text_frontend=True)
-                if len(PROMPT_CACHE) >= 64:
-                    PROMPT_CACHE.pop(next(iter(PROMPT_CACHE)))
-                PROMPT_CACHE[cache_key] = prompt_text_norm
-
-            sr = cosyvoice.sample_rate
-            audio_chunks = []
-            silence_gap = np.zeros(int(sr * 0.08), dtype=np.float32)
-
-            for idx, sentence in enumerate(sentences):
-                if not sentence.endswith(('.', '!', '?', '…')):
-                    sentence += '.'
-                text_normalized = cosyvoice.frontend.text_normalize(sentence, split=False, text_frontend=True)
-                
-                model_input = cosyvoice.frontend.frontend_zero_shot(
-                    text_normalized, prompt_text_norm, voice_wav_path, sr, ""
-                )
-
-                chunk_parts = []
-                for result in cosyvoice.model.tts(**model_input, stream=False, speed=speed, n_timesteps=n_timesteps):
-                    audio = result["tts_speech"]
-                    if hasattr(audio, "detach"):
-                        audio = audio.detach().cpu().numpy()
-                    audio = np.asarray(audio, dtype=np.float32).flatten()
-                    if len(audio) > 0:
-                        chunk_parts.append(audio)
-
-                if chunk_parts:
-                    single_chunk = np.concatenate(chunk_parts)
-                    single_chunk = clean_and_smooth_chunk(single_chunk, sr)
-                    audio_chunks.append(single_chunk)
-                    if idx < len(sentences) - 1:
-                        audio_chunks.append(silence_gap)
-
-            if not audio_chunks:
-                raise RuntimeError("CosyVoice не вернул аудио.")
-
-            final_audio = np.concatenate(audio_chunks)
-            clear_vram()
-
-            elapsed = round(time.time() - start_time, 2)
-            duration = round(len(final_audio) / sr, 2)
-            logger.info("TTS успешно: синтез %ss, длительность %ss", elapsed, duration)
-
-            return numpy_to_wav(final_audio, sr), duration
-
-def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
-    try:
-        return _generate_voice_impl(raw_text, voice_wav_path, ref_text, speed)
-    except Exception:
-        try:
-            clear_vram()
-        except Exception:
-            logging.getLogger(__name__).exception("Ошибка очистки VRAM после сбоя генерации")
-        raise
 
 # ==================== СИСТЕМНЫЕ НАСТРОЙКИ API ====================
 @app.get("/api/system_config")
@@ -1058,42 +657,6 @@ def api_isolate_vocal(
             del model
         if device == "cuda":
             clear_vram()
-
-def convert_to_clean_wav(input_bytes: bytes) -> bytes:
-    if not os.path.isfile(FFMPEG_PATH):
-        raise RuntimeError(f"FFmpeg не найден: {FFMPEG_PATH}")
-
-    timestamp = int(time.time() * 1000)
-    temp_in = os.path.join(TEMP_DIR, f"raw_in_{timestamp}")
-    temp_out = os.path.join(TEMP_DIR, f"clean_out_{timestamp}.wav")
-    try:
-        with open(temp_in, "wb") as stream:
-            stream.write(input_bytes)
-
-        cmd = [
-            FFMPEG_PATH, "-y", "-i", temp_in,
-            "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", temp_out
-        ]
-        try:
-            result = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("FFmpeg превысил время обработки (120 секунд).") from exc
-
-        if result.returncode != 0 or not os.path.isfile(temp_out):
-            error_message = result.stderr.decode("utf-8", errors="ignore")[-500:]
-            raise RuntimeError(f"FFmpeg decode error: {error_message}")
-
-        with open(temp_out, "rb") as stream:
-            return stream.read()
-    finally:
-        for path in (temp_in, temp_out):
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
 
 @app.post("/api/convert_to_telegram_ogg")
 def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):

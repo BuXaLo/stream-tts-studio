@@ -2,6 +2,7 @@
 import logging
 import queue
 import threading
+import uuid
 from collections import deque
 from datetime import datetime
 
@@ -12,6 +13,7 @@ class EventHub:
         self._queue_size = queue_size
         self._subscribers = set()
         self._sequence = 0
+        self._instance_id = uuid.uuid4().hex
         self._lock = threading.RLock()
 
     @staticmethod
@@ -23,7 +25,7 @@ class EventHub:
         item.setdefault("timestamp", self.timestamp())
         with self._lock:
             self._sequence += 1
-            item["event_id"] = self._sequence
+            item["event_id"] = "{}:{}".format(self._instance_id, self._sequence)
             self._history.append(item)
             subscribers = tuple(self._subscribers)
         for subscriber in subscribers:

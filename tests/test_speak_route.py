@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from studio.routes.speak import create_speak_router
+from studio.services.text import has_speakable_content
 
 
 class FakeWS:
@@ -23,7 +24,7 @@ def make_client(tmp_path, generate_voice, presets=None, speakable=None):
     app.include_router(create_speak_router(
         lambda: presets if presets is not None else {"alice": {"name": "Alice", "speed": 3.5, "reference_text": "ref"}},
         lambda: "alice", str(char_dir), generate_voice, FakeWS(),
-        speakable or bool, lambda value: value, FakeTorch,
+        speakable or has_speakable_content, lambda value: value, FakeTorch,
     ))
     return TestClient(app)
 

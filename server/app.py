@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import asyncio
+import subprocess
+import time
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 if SERVER_DIR not in sys.path:
@@ -26,6 +29,9 @@ LOG_DIR = ENV["LOG_DIR"]
 DASHBOARD_DIR = ENV["DASHBOARD_DIR"]
 OVERLAY_DIR = ENV["OVERLAY_DIR"]
 logger = ENV["logger"]
+
+from studio.core.monitor import MonitorLogHandler, set_shutdown_callback
+logger.addHandler(MonitorLogHandler())
 
 import re
 import threading
@@ -105,6 +111,16 @@ da_worker = DonationAlertsWorker()
 @app.on_event("startup")
 async def app_startup():
     da_worker.start()
+
+@app.on_event("shutdown")
+async def app_shutdown():
+    task = da_worker.task
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 # ==================== СТАТИКА И МАРШРУТЫ ====================
 app.mount("/char_files", StaticFiles(directory=CHARACTERS_DIR), name="char_files")
@@ -203,9 +219,36 @@ if __name__ == "__main__":
     cfg = load_config()
     host = cfg.get("host", "127.0.0.1")
     port = int(cfg.get("port", 8765))
-    
-    if cfg.get("auto_open_browser", True):
-        browser_host = "127.0.0.1" if host == "0.0.0.0" else ("[{}]".format(host) if ":" in host and not host.startswith("[") else host)
-        threading.Timer(1.0, lambda: webbrowser.open(f"http://{browser_host}:{port}/dashboard")).start()
-        
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    monitor_mode = os.environ.get("STUDIO_MONITOR_MODE") == "1"
+    browser_host = "127.0.0.1" if host == "0.0.0.0" else ("[{}]".format(host) if ":" in host and not host.startswith("[") else host)
+    base_url = f"http://{browser_host}:{port}"
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=300))
+    set_shutdown_callback(lambda: setattr(server, "should_exit", True))
+
+    def open_window_when_ready():
+        deadline = time.time() + 180
+        while not server.started and not server.should_exit and time.time() < deadline:
+            time.sleep(0.25)
+        if not server.started:
+            return
+        if monitor_mode:
+            monitor_url = base_url + "/monitor"
+            edge_candidates = [
+                os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(os.environ.get("PROGRAMFILES", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+            ]
+            edge_path = next((path for path in edge_candidates if path and os.path.isfile(path)), None)
+            if edge_path:
+                try:
+                    subprocess.Popen([edge_path, "--app=" + monitor_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    webbrowser.open(monitor_url)
+            else:
+                webbrowser.open(monitor_url)
+        elif cfg.get("auto_open_browser", True):
+            webbrowser.open(base_url + "/dashboard")
+
+    if monitor_mode or cfg.get("auto_open_browser", True):
+        threading.Thread(target=open_window_when_ready, daemon=True).start()
+    server.run()

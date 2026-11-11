@@ -1,12 +1,62 @@
 """Dashboard, overlay page and overlay WebSocket routes."""
+import asyncio
+import ipaddress
 import os
+import queue
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 
 
 def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     router = APIRouter()
+    from studio.core import monitor
+
+    @router.get("/monitor")
+    @router.get("/monitor/")
+    def get_monitor_page():
+        monitor_file = os.path.join(os.path.dirname(dashboard_dir), "monitor", "index.html")
+        return FileResponse(monitor_file)
+
+    @router.websocket("/ws/monitor")
+    async def websocket_monitor(websocket: WebSocket):
+        origin = websocket.headers.get("origin")
+        host = websocket.headers.get("host", "")
+        if origin and not same_origin(origin, host, websocket.url.scheme):
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        events = monitor.subscribe()
+        try:
+            for event in monitor.history():
+                await websocket.send_json(event)
+            while True:
+                try:
+                    event = await asyncio.to_thread(events.get, True, 15)
+                except queue.Empty:
+                    continue
+                await websocket.send_json(event)
+                if event.get("type") == "shutdown":
+                    await websocket.close(code=1001)
+                    break
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
+            monitor.unsubscribe(events)
+
+    @router.post("/api/monitor/shutdown")
+    async def shutdown_monitor(request: Request):
+        client_host = request.client.host if request.client else ""
+        try:
+            if not ipaddress.ip_address(client_host).is_loopback:
+                raise HTTPException(status_code=403, detail="Команда доступна только с локального компьютера.")
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Команда доступна только с локального компьютера.")
+        if not monitor.schedule_shutdown():
+            raise HTTPException(status_code=503, detail="Штатное выключение сейчас недоступно.")
+        return {"status": "shutting_down"}
 
     @router.get("/")
     def root():

@@ -27,3 +27,4 @@ jobs:
       - run: node --check web/dashboard/app.js
       - run: node --check web/dashboard/builder.js
       - run: node --check web/overlay/overlay.js
+      - run: node --check web/monitor/app.js

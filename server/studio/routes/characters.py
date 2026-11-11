@@ -97,17 +97,17 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         except (TypeError, ValueError):
             theme = default_preset["theme"]
     
-        char_dir = os.path.join(characters_dir, char_id)
-        os.makedirs(char_dir, exist_ok=True)
-        voice_path = os.path.join(char_dir, "voice.wav")
-        avatar_path = os.path.join(char_dir, "avatar.png")
-    
-        if clean_wav is not None:
-            write_bytes_atomic(voice_path, clean_wav)
-        if avatar_bytes is not None:
-            write_bytes_atomic(avatar_path, avatar_bytes)
-    
         with get_file_lock(presets_file):
+            char_dir = os.path.join(characters_dir, char_id)
+            os.makedirs(char_dir, exist_ok=True)
+            voice_path = os.path.join(char_dir, "voice.wav")
+            avatar_path = os.path.join(char_dir, "avatar.png")
+
+            if clean_wav is not None:
+                write_bytes_atomic(voice_path, clean_wav)
+            if avatar_bytes is not None:
+                write_bytes_atomic(avatar_path, avatar_bytes)
+
             presets = load_presets()
             presets[char_id] = {
                 "name": name,
@@ -116,15 +116,15 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
                 "theme": theme
             }
             save_presets(presets)
-    
-        if clean_wav is not None:
-            for cache_key in list(prompt_cache):
-                if cache_key.startswith(voice_path + "_"):
-                    prompt_cache.pop(cache_key, None)
-    
-        if not get_active_character_id():
-            with get_file_lock(active_file):
-                set_active_character_id(char_id)
+
+            if clean_wav is not None:
+                for cache_key in list(prompt_cache):
+                    if cache_key.startswith(voice_path + "_"):
+                        prompt_cache.pop(cache_key, None)
+
+            if not get_active_character_id():
+                with get_file_lock(active_file):
+                    set_active_character_id(char_id)
     
         return {"status": "ok", "char_id": char_id}
     
@@ -139,10 +139,10 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             with get_file_lock(active_file):
                 if get_active_character_id() == char_id:
                     set_active_character_id(list(presets.keys())[0] if presets else "")
-    
-        char_dir = os.path.join(characters_dir, char_id)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir, ignore_errors=True)
+
+            char_dir = os.path.join(characters_dir, char_id)
+            if os.path.exists(char_dir):
+                shutil.rmtree(char_dir, ignore_errors=True)
         return {"status": "ok"}
     
 

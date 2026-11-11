@@ -107,9 +107,6 @@ async def app_startup():
     da_worker.start()
 
 # ==================== СТАТИКА И МАРШРУТЫ ====================
-DASHBOARD_DIR = os.path.join(BASE_DIR, "web", "dashboard")
-OVERLAY_DIR = os.path.join(BASE_DIR, "web", "overlay")
-
 app.mount("/char_files", StaticFiles(directory=CHARACTERS_DIR), name="char_files")
 app.mount("/fonts", StaticFiles(directory=FONTS_DIR), name="fonts")
 app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")

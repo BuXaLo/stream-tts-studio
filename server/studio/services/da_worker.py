@@ -94,7 +94,10 @@ class DonationAlertsWorker:
         try:
             access_token = tokens.get("access_token")
             profile = fetch_profile(access_token)
-            if isinstance(profile, requests.Response) and profile.status_code == 401 and tokens.get("refresh_token"):
+            if isinstance(profile, requests.Response) and profile.status_code == 401:
+                if not tokens.get("refresh_token"):
+                    self.last_error = "OAuth-токен DonationAlerts истёк. Требуется повторная авторизация."
+                    return None
                 refreshed = self.refresh_tokens(
                     tokens["refresh_token"], da_cfg["client_id"], da_cfg["client_secret"]
                 )
@@ -103,6 +106,9 @@ class DonationAlertsWorker:
                     return None
                 access_token = refreshed.get("access_token")
                 profile = fetch_profile(access_token)
+                if isinstance(profile, requests.Response) and profile.status_code == 401:
+                    self.last_error = "OAuth-токен DonationAlerts недействителен. Требуется повторная авторизация."
+                    return None
 
             if isinstance(profile, requests.Response):
                 self.last_error = f"DonationAlerts временно недоступен (HTTP {profile.status_code})."

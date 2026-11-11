@@ -7,7 +7,7 @@ import logging
 import math
 import os
 import subprocess
-import time
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -32,8 +32,8 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
         start: float = Form(0.0),
         end: float = Form(0.0)
     ):
-        temp_in = os.path.join(TEMP_DIR, f"trim_in_{int(time.time()*1000)}.wav")
-        temp_out = os.path.join(TEMP_DIR, f"trim_out_{int(time.time()*1000)}.wav")
+        temp_in = os.path.join(TEMP_DIR, f"trim_in_{uuid.uuid4().hex}.wav")
+        temp_out = os.path.join(TEMP_DIR, f"trim_out_{uuid.uuid4().hex}.wav")
         whisper_model = None
         device = "cpu"
         try:
@@ -192,8 +192,8 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
         if not os.path.isfile(FFMPEG_PATH):
             raise HTTPException(status_code=500, detail=f"FFmpeg не найден: {FFMPEG_PATH}")
     
-        temp_wav = os.path.join(TEMP_DIR, f"conv_{int(time.time()*1000)}.wav")
-        temp_ogg = os.path.join(TEMP_DIR, f"conv_{int(time.time()*1000)}.ogg")
+        temp_wav = os.path.join(TEMP_DIR, f"conv_{uuid.uuid4().hex}.wav")
+        temp_ogg = os.path.join(TEMP_DIR, f"conv_{uuid.uuid4().hex}.ogg")
         try:
             with open(temp_wav, "wb") as stream:
                 stream.write(audio.file.read())
@@ -258,7 +258,7 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
                 log.warning("Draft audio conversion failed: %s", e)
                 raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")
     
-            temp_voice = os.path.join(TEMP_DIR, f"draft_{int(time.time()*1000)}.wav")
+            temp_voice = os.path.join(TEMP_DIR, f"draft_{uuid.uuid4().hex}.wav")
             with open(temp_voice, "wb") as f:
                 f.write(clean_draft)
             voice_path = temp_voice

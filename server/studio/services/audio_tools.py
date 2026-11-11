@@ -1,7 +1,7 @@
 """FFmpeg-backed audio conversion helpers."""
 import os
 import subprocess
-import time
+import uuid
 
 FFMPEG_PATH = TEMP_DIR = None
 
@@ -14,9 +14,9 @@ def convert_to_clean_wav(input_bytes: bytes) -> bytes:
     if not os.path.isfile(FFMPEG_PATH):
         raise RuntimeError(f"FFmpeg не найден: {FFMPEG_PATH}")
 
-    timestamp = int(time.time() * 1000)
-    temp_in = os.path.join(TEMP_DIR, f"raw_in_{timestamp}")
-    temp_out = os.path.join(TEMP_DIR, f"clean_out_{timestamp}.wav")
+    unique_id = uuid.uuid4().hex
+    temp_in = os.path.join(TEMP_DIR, f"raw_in_{unique_id}")
+    temp_out = os.path.join(TEMP_DIR, f"clean_out_{unique_id}.wav")
     try:
         with open(temp_in, "wb") as stream:
             stream.write(input_bytes)

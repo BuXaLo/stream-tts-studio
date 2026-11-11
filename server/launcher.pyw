@@ -442,11 +442,11 @@ def main():
         _, _, backend_url = backend_address()
         controller = LauncherController(backend_url, monitor_port, log_stream)
         tray = Win32TrayIcon(monitor_url, controller)
-        tray.start()
-        webbrowser.open(monitor_url, new=1)
-        controller.write_log("Монитор открыт в браузере по умолчанию.")
-        controller.start_backend()
         try:
+            tray.start()
+            webbrowser.open(monitor_url, new=2)
+            controller.write_log("Монитор открыт в браузере по умолчанию.")
+            controller.start_backend()
             while not exit_requested.wait(0.5):
                 controller.refresh()
         finally:

@@ -295,3 +295,16 @@ sys.path.insert(0, SERVER_DIR)
 - [x] Обработчик логов подключён к `studio`, root и Uvicorn logger; WebSocket использует методы экземпляра `monitor.hub`.
 - [x] Команда штатного выключения доступна только с локального компьютера.
 - [ ] Проверить на копии portable runtime запуск Edge app-окна, генерацию WAV, OBS, Streamer.bot, DonationAlerts и graceful shutdown перед использованием в эфире.
+
+
+### Низкий приоритет — чёткость иконки монитора на панели задач Windows
+
+- [ ] Разобраться, почему отдельное окно Edge App Mode показывает размытую иконку на панели задач; проверить варианты назначения иконки окна/AUMID и влияние кэша иконок Windows. Не менять рабочую логику Launcher без отдельного исследования и проверки.
+
+Уже выполненная попытка — Web App Manifest монитора. Она не устранила проблему, но оставлена в проекте как статические метаданные. Реализация была распределена по трём файлам и трём отдельным коммитам:
+
+- `web/monitor/manifest.webmanifest` — [f4565d76](https://github.com/BuXaLo/stream-tts-studio/commit/f4565d76d66e591be7e52e77bd5682c156f9851d), создание манифеста.
+- `web/monitor/index.html` — [7c767bbf](https://github.com/BuXaLo/stream-tts-studio/commit/7c767bbf92c4d640defb4df994bf51b164723eef), подключение манифеста.
+- `server/launcher.pyw` — [4329fb8c](https://github.com/BuXaLo/stream-tts-studio/commit/4329fb8c631a0d51a76dc76f361540e1d04102aa), раздача манифеста Launcher.
+
+Последующая корректировка манифеста: [73799ef9](https://github.com/BuXaLo/stream-tts-studio/commit/73799ef98ef52b4c327e3bb4e3d80ae8ff3061c5) — `start_url` изменён на `/?launcher=1` для сохранения Launcher-режима, удалены явно заданные размеры иконки. Для восстановления полного изменения следует просматривать diff всех четырёх коммитов.

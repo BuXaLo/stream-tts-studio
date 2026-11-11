@@ -7,6 +7,7 @@ let socket = null;
 let launcherMode = new URLSearchParams(location.search).has("launcher");
 let backendActive = false;
 let backendConnected = false;
+let shutdownRequested = false;
 let bootLineCount = 0;
 let bootCleared = false;
 
@@ -112,7 +113,27 @@ function handleEvent(event) {
     }
     if (event.type === "shutdown") {
         backendActive = false;
+        shutdownRequested = true;
+        $("shutdownButton").disabled = true;
+        $("shutdownButton").textContent = "Выключение…";
         $("connectionText").textContent = "Завершение работы";
+    }
+}
+
+function setLauncherButton(status) {
+    const button = $("shutdownButton");
+    if (status === "ready") {
+        button.disabled = false;
+        button.textContent = "Выключить студию";
+        button.className = "button danger";
+    } else if (status === "stopped" || status === "error") {
+        button.disabled = false;
+        button.textContent = "Запустить студию";
+        button.className = "button secondary";
+        shutdownRequested = false;
+    } else {
+        button.disabled = true;
+        button.textContent = status === "stopping" ? "Выключение…" : "Запуск студии…";
     }
 }
 
@@ -139,16 +160,14 @@ function connect(backendUrl) {
         if (launcherMode) clearBootView();
         $("connectionText").textContent = "Подключено";
         $("connectionDot").parentElement.className = "status connected";
-        const dashboardLink = $("dashboardLink");
-        if (dashboardLink) dashboardLink.href = backendUrl + "/dashboard/";
-        $("shutdownButton").disabled = false;
-        $("shutdownButton").textContent = "Выключить студию";
+        if (!shutdownRequested) setLauncherButton("ready");
     };
     socket.onmessage = message => {
         try { handleEvent(JSON.parse(message.data)); } catch (_) {}
     };
     socket.onclose = event => {
         backendConnected = false;
+        socket = null;
         $("connectionText").textContent = "Нет соединения" +
             (event.code && event.code !== 1000 ? " (код " + event.code + (event.reason ? ": " + event.reason : "") + ")" : "");
         $("connectionDot").parentElement.className = "status disconnected";
@@ -194,21 +213,25 @@ async function pollLauncher() {
         if (status.status === "ready") {
             backendActive = true;
             $("connectionText").textContent = backendConnected ? "Подключено" : "Backend запущен, подключение…";
+            if (!shutdownRequested) setLauncherButton("ready");
             if (!socket) connect(status.backend_url);
         } else if (status.status === "error") {
             backendActive = false;
+            setLauncherButton("error");
             $("connectionText").textContent = status.detail || "Ошибка запуска backend";
             $("connectionDot").parentElement.className = "status disconnected";
         } else if (status.status === "stopped") {
             backendActive = false;
-            $("shutdownButton").disabled = true;
+            setLauncherButton("stopped");
             $("connectionText").textContent = "Студия остановлена";
             $("connectionDot").parentElement.className = "status disconnected";
         } else {
+            backendActive = false;
+            setLauncherButton("starting");
             $("connectionText").textContent = "Запуск backend…";
         }
     } catch (error) {
-        $("connectionText").textContent = "Ожидание загрузчика…";
+        $("connectionText").textContent = "Нет связи с загрузчиком";
     }
     if (launcherMode) setTimeout(pollLauncher, 700);
 }
@@ -221,23 +244,60 @@ document.querySelectorAll("[data-filter]").forEach(button => button.addEventList
 }));
 
 $("shutdownButton").addEventListener("click", async () => {
+    if (launcherMode && !backendActive) {
+        $("shutdownButton").disabled = true;
+        $("shutdownButton").textContent = "Запуск студии…";
+        try {
+            const response = await fetch("/launcher-start", { method: "POST" });
+            if (!response.ok) {
+                const detail = await response.json().catch(() => ({}));
+                throw new Error(detail.detail || "HTTP " + response.status);
+            }
+            shutdownRequested = false;
+            $("connectionText").textContent = "Запуск backend…";
+        } catch (error) {
+            alert("Не удалось запустить студию: " + error.message);
+            setLauncherButton("stopped");
+        }
+        return;
+    }
     if (!confirm("Завершить работу студии? Текущая генерация будет завершена перед остановкой.")) return;
     $("shutdownButton").disabled = true;
     $("shutdownButton").textContent = "Выключение…";
+    shutdownRequested = true;
     try {
-        const response = await fetch((launcherMode ? $("dashboardLink").href.replace(/\/dashboard\/$/, "") : "") + "/api/monitor/shutdown", { method: "POST" });
+        const baseUrl = launcherMode ? "" : location.origin;
+        const response = await fetch(baseUrl + "/api/monitor/shutdown", { method: "POST" });
         if (!response.ok) throw new Error("HTTP " + response.status);
         $("connectionText").textContent = "Студия выключается";
     } catch (error) {
         alert("Не удалось выключить студию: " + error.message);
-        $("shutdownButton").disabled = false;
-        $("shutdownButton").textContent = "Выключить студию";
+        shutdownRequested = false;
+        setLauncherButton("ready");
     }
 });
 
+const dashboardButton = $("dashboardButton");
+if (dashboardButton) {
+    dashboardButton.addEventListener("click", async () => {
+        if (!launcherMode) {
+            window.open(location.origin + "/", "_blank", "noopener");
+            return;
+        }
+        dashboardButton.disabled = true;
+        try {
+            const response = await fetch("/open-dashboard", { method: "POST" });
+            if (!response.ok) throw new Error("Не удалось открыть Dashboard");
+        } catch (error) {
+            alert(error.message);
+        } finally {
+            dashboardButton.disabled = false;
+        }
+    });
+}
+
 if (launcherMode) {
-    $("shutdownButton").disabled = true;
-    $("shutdownButton").textContent = "Ожидание запуска…";
+    setLauncherButton("starting");
     pollLauncher();
 } else {
     connect(location.origin);

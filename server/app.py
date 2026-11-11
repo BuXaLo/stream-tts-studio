@@ -33,7 +33,6 @@ from studio.core.ws import ConnectionManager, ws_manager
 from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
 from studio.core.validation import is_valid_bind_host, same_origin
 from studio.core.validation import validate_port
-from studio.services.streamerbot import send_donation_to_streamerbot
 from studio.services.da_worker import DA_AUTH_URL, DonationAlertsWorker, configure_worker
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
@@ -145,6 +144,8 @@ from studio.services.tts_engine import PROMPT_CACHE, clear_vram, configure_tts, 
 configure_tts(cosyvoice, generation_lock, load_config, logger)
 from studio.services.audio_tools import configure_audio_tools, convert_to_clean_wav
 configure_audio_tools(FFMPEG_PATH, TEMP_DIR)
+from studio.routes.system import create_system_router
+app.include_router(create_system_router(load_config, save_config, get_file_lock, CONFIG_FILE, ws_manager, validate_host, validate_port))
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
 
@@ -213,15 +214,6 @@ def set_active_character_id(char_id: str):
     write_json_atomic(ACTIVE_FILE, {"active": char_id})
 
 # ==================== СИСТЕМНЫЕ НАСТРОЙКИ API ====================
-@app.get("/api/system_config")
-def api_get_system_config():
-    cfg = load_config()
-    return {
-        "config": cfg,
-        "obs_connected": len(ws_manager.active_connections) > 0,
-        "active_connections_count": len(ws_manager.active_connections)
-    }
-
 def require_character(char_id):
     if not isinstance(char_id, str) or not re.fullmatch(r"[a-z0-9_-]+", char_id):
         raise HTTPException(status_code=404, detail="Персонаж не найден.")
@@ -246,28 +238,6 @@ def validate_streamerbot_url(value):
     if parsed.scheme not in ("http", "https") or not parsed.hostname or not valid_port or parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
     return str(value).strip()
-
-@app.post("/api/system_config")
-def api_save_system_config(data: dict):
-    with get_file_lock(CONFIG_FILE):
-        cfg = load_config()
-        if "host" in data:
-            cfg["host"] = validate_host(data["host"])
-        if "port" in data:
-            try:
-                port = validate_port(data["port"])
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1 до 65535.")
-            cfg["port"] = port
-        if "n_timesteps" in data:
-            try:
-                cfg["n_timesteps"] = max(4, min(15, int(data["n_timesteps"])))
-            except (TypeError, ValueError, OverflowError):
-                raise HTTPException(status_code=400, detail="n_timesteps должен быть целым числом.")
-        if "auto_open_browser" in data:
-            cfg["auto_open_browser"] = bool(data["auto_open_browser"])
-        save_config(cfg)
-    return {"status": "ok", "config": cfg}
 
 # ==================== DONATIONALERTS API ====================
 @app.get("/api/da/config")

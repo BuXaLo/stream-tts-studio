@@ -10,11 +10,11 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
 
     @router.get("/")
     def root():
-        return FileResponse(os.path.join(DASHBOARD_DIR, "index.html"))
+        return FileResponse(os.path.join(dashboard_dir, "index.html"))
     
     @router.get("/favicon.ico")
     def get_favicon():
-        fav_path = os.path.join(DASHBOARD_DIR, "favicon.ico")
+        fav_path = os.path.join(dashboard_dir, "favicon.ico")
         if os.path.exists(fav_path):
             return FileResponse(fav_path)
         return Response(status_code=204)
@@ -22,7 +22,7 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     @router.get("/overlay")
     @router.get("/overlay/")
     def get_overlay_page():
-        return FileResponse(os.path.join(OVERLAY_DIR, "overlay.html"))
+        return FileResponse(os.path.join(overlay_dir, "overlay.html"))
     
     @router.websocket("/ws/overlay")
     async def websocket_overlay(websocket: WebSocket):

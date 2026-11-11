@@ -194,6 +194,11 @@ async function pollLauncher() {
         const status = await statusResponse.json();
         addStartupLines(await logResponse.text());
 
+        if (status.close_monitor) {
+            window.close();
+            return;
+        }
+
         if (status.status === "ready") {
             backendActive = true;
             $("connectionText").textContent = backendConnected ? "Подключено" : "Backend запущен, подключение…";

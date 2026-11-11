@@ -49,6 +49,7 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
             await websocket.close(code=1008)
             return
         await websocket.accept()
+        monitor_logger.info("Monitor WebSocket connected (client=%s)", client_host)
         events = monitor.subscribe()
         try:
             for event in monitor.history():

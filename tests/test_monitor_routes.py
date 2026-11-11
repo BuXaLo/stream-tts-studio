@@ -28,5 +28,7 @@ def test_monitor_connection_requires_loopback_client_and_host():
 
     assert _is_local_monitor_connection("127.0.0.1", "localhost")
     assert _is_local_monitor_connection("::1", "::1")
+    assert _is_local_monitor_connection("::ffff:127.0.0.1", "127.0.0.1")
+    assert not _is_local_monitor_connection("::ffff:192.168.1.10", "192.168.1.10")
     assert not _is_local_monitor_connection("192.168.1.10", "192.168.1.10")
     assert not _is_local_monitor_connection("127.0.0.1", "attacker.example")

@@ -33,5 +33,5 @@ def test_da_config_normalizes_invalid_legacy_values(tmp_path):
 
 def test_config_store_keeps_valid_full_port_range(tmp_path):
     store = ConfigStore(tmp_path)
-    store.config_file.write_text(json.dumps({"port": 8765, "n_timesteps": 6}), encoding="utf-8")
+    Path(store.config_file).write_text(json.dumps({"port": 8765, "n_timesteps": 6}), encoding="utf-8")
     assert store.load_config()["port"] == 8765

@@ -196,6 +196,8 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
                 payload = json.dumps({"status": "starting" if started else "already_running"}).encode("utf-8")
                 self._send(202 if started else 200, "application/json; charset=utf-8", payload)
             except Exception as exc:
+                controller.set_state(status="error", detail="Не удалось запустить backend: {}".format(exc))
+                controller.write_log("Ошибка запуска backend: {}".format(exc))
                 payload = json.dumps({"detail": str(exc)}, ensure_ascii=False).encode("utf-8")
                 self._send(500, "application/json; charset=utf-8", payload)
             return

@@ -37,10 +37,12 @@ if os.name == "nt":
     create_mutex = kernel32.CreateMutexW
     create_mutex.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
     create_mutex.restype = ctypes.c_void_p
+    ctypes.set_last_error(0)
     _INSTANCE_MUTEX = create_mutex(None, False, "Local\\StreamTTSStudio")
+    mutex_error = ctypes.get_last_error()
     if not _INSTANCE_MUTEX:
-        raise OSError(ctypes.get_last_error(), "Не удалось создать mutex экземпляра студии")
-    if ctypes.get_last_error() == 183:
+        raise OSError(mutex_error, "Не удалось создать mutex экземпляра студии")
+    if mutex_error == 183:
         logger.error("Студия уже запущена. Второй экземпляр не будет загружать модель.")
         if os.environ.get("STUDIO_MONITOR_MODE") == "1":
             ctypes.windll.user32.MessageBoxW(None, "Студия уже запущена. Используйте существующее окно мониторинга.", "TTS Studio", 0x40)

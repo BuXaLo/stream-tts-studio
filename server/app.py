@@ -808,7 +808,6 @@ def api_get_system_config():
         "active_connections_count": len(ws_manager.active_connections)
     }
 
-@app.post("/api/system_config")
 def require_character(char_id):
     if not isinstance(char_id, str) or not re.fullmatch(r"[a-z0-9_-]+", char_id):
         raise HTTPException(status_code=404, detail="Персонаж не найден.")
@@ -842,9 +841,9 @@ def api_save_system_config(data: dict):
             try:
                 port = int(data["port"])
             except (TypeError, ValueError, OverflowError):
-                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
+                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1 до 65535.")
             if isinstance(data["port"], bool) or not 1 <= port <= 65535:
-                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
+                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1 до 65535.")
             cfg["port"] = port
         if "n_timesteps" in data:
             try:

@@ -23,3 +23,15 @@ def test_same_origin_normalizes_ports_and_ipv6(origin, host, scheme):
 ])
 def test_same_origin_rejects_foreign_or_malformed_origins(origin, host, scheme):
     assert not same_origin(origin, host, scheme)
+
+
+import pytest
+from studio.core.validation import is_valid_bind_host
+
+@pytest.mark.parametrize("host", ["localhost", "0.0.0.0", "127.0.0.1", "::1", "[::1]", "studio.local", "my-pc.example.test"])
+def test_valid_bind_hosts(host):
+    assert is_valid_bind_host(host)
+
+@pytest.mark.parametrize("host", ["", "not a host", "http://localhost", "localhost:8765", "evil/path", "-bad.example", "bad-.example", "a" * 254])
+def test_invalid_bind_hosts(host):
+    assert not is_valid_bind_host(host)

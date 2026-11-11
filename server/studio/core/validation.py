@@ -19,6 +19,25 @@ def _host_port(value, scheme):
     return hostname, port or (443 if scheme == "https" else 80)
 
 
+def is_valid_bind_host(value):
+    if not isinstance(value, str):
+        return False
+    host = value.strip()
+    if not host or len(host) > 253 or any(char.isspace() for char in host):
+        return False
+    if host.lower() == "localhost" or host == "0.0.0.0":
+        return True
+    candidate = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+    try:
+        ipaddress.ip_address(candidate)
+        return True
+    except ValueError:
+        pass
+    label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    import re
+    return re.fullmatch(label + r"(?:\." + label + r")*", host) is not None
+
+
 def same_origin(origin, host_header, request_scheme):
     try:
         parsed = urlsplit(origin)

@@ -151,7 +151,9 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
         if path == "/launcher-status":
             controller.refresh()
             with state_lock:
-                payload = json.dumps(state, ensure_ascii=False).encode("utf-8")
+                status = dict(state)
+            status["close_monitor"] = exit_requested.is_set()
+            payload = json.dumps(status, ensure_ascii=False).encode("utf-8")
             self._send(200, "application/json; charset=utf-8", payload)
             return
         if path == "/startup-log":

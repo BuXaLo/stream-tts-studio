@@ -168,6 +168,10 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
             "/monitor/index.html": ("index.html", "text/html; charset=utf-8"),
             "/monitor/app.js": ("app.js", "application/javascript; charset=utf-8"),
             "/monitor/style.css": ("style.css", "text/css; charset=utf-8"),
+            "/manifest.webmanifest": (
+                "manifest.webmanifest",
+                "application/manifest+json; charset=utf-8",
+            ),
         }
         if path == "/favicon.ico":
             asset_path, content_type = ICON_FILE, "image/x-icon"

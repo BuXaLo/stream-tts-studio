@@ -1,39 +1,54 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-import ipaddress
-import secrets
-import html
-import math
+
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
-import io
+
+from studio.core.env import configure_environment
+ENV = configure_environment(SERVER_DIR)
+BASE_DIR = ENV["BASE_DIR"]
+COSY_DIR = ENV["COSY_DIR"]
+CHARACTERS_DIR = ENV["CHARACTERS_DIR"]
+PRESETS_FILE = ENV["PRESETS_FILE"]
+ACTIVE_FILE = ENV["ACTIVE_FILE"]
+CONFIG_FILE = ENV["CONFIG_FILE"]
+DA_CONFIG_FILE = ENV["DA_CONFIG_FILE"]
+DA_TOKENS_FILE = ENV["DA_TOKENS_FILE"]
+TEMP_DIR = ENV["TEMP_DIR"]
+FFMPEG_PATH = ENV["FFMPEG_PATH"]
+FONTS_DIR = ENV["FONTS_DIR"]
+BUNDLED_FONTS_DIR = ENV["BUNDLED_FONTS_DIR"]
+CUSTOM_FONTS_DIR = ENV["CUSTOM_FONTS_DIR"]
+AUDIO_TOOLS_CACHE = ENV["AUDIO_TOOLS_CACHE"]
+LOG_DIR = ENV["LOG_DIR"]
+DASHBOARD_DIR = ENV["DASHBOARD_DIR"]
+OVERLAY_DIR = ENV["OVERLAY_DIR"]
+logger = ENV["logger"]
+
 import re
-import gc
-import json
-import time
-import wave
-import base64
-import shutil
 import threading
-import subprocess
 import webbrowser
 import logging
-import asyncio
 import urllib.parse
-from typing import Optional
 
-import requests
-import websockets
+import numpy as np
+import torch
+import torchaudio
+import soundfile as sf
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from faster_whisper import WhisperModel
+from cosyvoice.cli.cosyvoice import AutoModel
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 from studio.core.config import ConfigStore
-from studio.core.ws import ConnectionManager, ws_manager
-from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
-from studio.core.validation import is_valid_bind_host, same_origin
-from studio.core.validation import validate_port
-from studio.services.da_worker import DA_AUTH_URL, DA_SCOPES, DA_TOKEN_URL, DonationAlertsWorker, configure_worker
+from studio.core.ws import ws_manager
+from studio.services.text import has_speakable_content, sanitize_overlay_text
+from studio.core.validation import is_valid_bind_host, same_origin, validate_port
+from studio.services.da_worker import DonationAlertsWorker, configure_worker
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -45,69 +60,6 @@ class EndpointFilter(logging.Filter):
         return "GET /api/system_config" not in msg and "GET /api/da/config" not in msg
 
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
-
-# ==================== ПУТИ И ОКРУЖЕНИЕ ====================
-SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.dirname(SERVER_DIR)
-
-COSY_DIR = os.path.join(BASE_DIR, "cosyvoice3")
-CHARACTERS_DIR = os.path.join(BASE_DIR, "characters")
-PRESETS_FILE = os.path.join(SERVER_DIR, "presets.json")
-ACTIVE_FILE = os.path.join(SERVER_DIR, "active_character.json")
-CONFIG_FILE = os.path.join(SERVER_DIR, "config.json")
-DA_CONFIG_FILE = os.path.join(SERVER_DIR, "da_config.json")
-DA_TOKENS_FILE = os.path.join(SERVER_DIR, "da_tokens.json")
-TEMP_DIR = os.path.join(SERVER_DIR, "temp")
-FFMPEG_PATH = os.path.join(COSY_DIR, "tools", "ffmpeg.exe")
-
-FONTS_DIR = os.path.join(SERVER_DIR, "fonts")
-BUNDLED_FONTS_DIR = os.path.join(FONTS_DIR, "bundled")
-CUSTOM_FONTS_DIR = os.path.join(FONTS_DIR, "custom")
-
-AUDIO_TOOLS_CACHE = os.path.join(COSY_DIR, "pretrained_models", "audio_tools")
-
-os.makedirs(CHARACTERS_DIR, exist_ok=True)
-os.makedirs(TEMP_DIR, exist_ok=True)
-os.makedirs(BUNDLED_FONTS_DIR, exist_ok=True)
-os.makedirs(CUSTOM_FONTS_DIR, exist_ok=True)
-os.makedirs(AUDIO_TOOLS_CACHE, exist_ok=True)
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
-logger = logging.getLogger("studio")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    from logging.handlers import RotatingFileHandler
-    log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    file_handler = RotatingFileHandler(os.path.join(LOG_DIR, "studio.log"), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
-    file_handler.setFormatter(log_formatter)
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-os.environ["TEMP"] = TEMP_DIR
-os.environ["TMP"] = TEMP_DIR
-os.environ["TORCH_HOME"] = AUDIO_TOOLS_CACHE
-os.environ["MODELSCOPE_CACHE"] = os.path.join(COSY_DIR, "model_cache")
-os.environ["HF_HOME"] = os.path.join(COSY_DIR, "model_cache")
-os.environ["MODELSCOPE_OFFLINE"] = "1"
-os.environ["MODELSCOPE_ENVIRONMENT"] = "local"
-os.environ["HF_HUB_OFFLINE"] = "1"
-
-if COSY_DIR not in sys.path:
-    sys.path.append(COSY_DIR)
-
-import numpy as np
-import torch
-import torchaudio
-import soundfile as sf
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
-from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from faster_whisper import WhisperModel
-from cosyvoice.cli.cosyvoice import AutoModel
 
 logger.info("=" * 60)
 logger.info("TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + Demucs + DA)")

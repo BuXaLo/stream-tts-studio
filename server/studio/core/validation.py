@@ -23,16 +23,20 @@ def _host_port(value, scheme):
     parsed = urlsplit("{}://{}".format(scheme, value))
     if not parsed.hostname or parsed.username or parsed.password:
         raise ValueError("invalid host")
+    if parsed.path or parsed.query or parsed.fragment:
+        raise ValueError("invalid host components")
     try:
         port = parsed.port
     except ValueError as exc:
         raise ValueError("invalid port") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("invalid port")
     hostname = parsed.hostname.rstrip(".").lower()
     try:
         hostname = ipaddress.ip_address(hostname).compressed
     except ValueError:
         pass
-    return hostname, port or (443 if scheme == "https" else 80)
+    return hostname, port if port is not None else (443 if scheme == "https" else 80)
 
 
 def is_valid_bind_host(value):

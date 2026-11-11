@@ -9,6 +9,7 @@ from studio.core.validation import is_valid_bind_host, same_origin, validate_por
     ("http://[::1]:8765", "[::1]:8765", "http"),
     ("http://127.0.0.1:8765", "127.0.0.1:8765", "http"),
     ("http://localhost:8765", "localhost:8765", "ws"),
+    ("https://[::1]", "[::1]:443", "https"),
 ])
 def test_same_origin_normalizes_ports_and_ipv6(origin, host, scheme):
     assert same_origin(origin, host, scheme)
@@ -20,6 +21,9 @@ def test_same_origin_normalizes_ports_and_ipv6(origin, host, scheme):
     ("http://localhost:8766", "localhost:8765", "http"),
     ("null", "localhost:8765", "http"),
     ("http://user@localhost:8765", "localhost:8765", "http"),
+    ("http://localhost:0", "localhost:0", "http"),
+    ("http://localhost:65536", "localhost:65536", "http"),
+    ("http://localhost:8765", "localhost:8765/path", "http"),
 ])
 def test_same_origin_rejects_foreign_or_malformed_origins(origin, host, scheme):
     assert not same_origin(origin, host, scheme)

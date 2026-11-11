@@ -266,8 +266,8 @@ $("shutdownButton").addEventListener("click", async () => {
     $("shutdownButton").textContent = "Выключение…";
     shutdownRequested = true;
     try {
-        const baseUrl = launcherMode ? "" : location.origin;
-        const response = await fetch(baseUrl + "/api/monitor/shutdown", { method: "POST" });
+        const shutdownUrl = launcherMode ? "/launcher-stop" : location.origin + "/api/monitor/shutdown";
+        const response = await fetch(shutdownUrl, { method: "POST" });
         if (!response.ok) throw new Error("HTTP " + response.status);
         $("connectionText").textContent = "Студия выключается";
     } catch (error) {

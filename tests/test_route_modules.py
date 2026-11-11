@@ -79,3 +79,47 @@ def test_speak_router_preserves_wav_and_overlay_contract(tmp_path):
     assert response.headers["content-type"] == "audio/wav"
     assert response.content == b"RIFFtest"
     assert ws.events[0]["event"] == "mita_dialogue"
+
+
+
+def test_character_save_and_delete_keep_files_and_presets_consistent(tmp_path):
+    from studio.core.storage import get_file_lock, write_bytes_atomic
+
+    char_dir = tmp_path / "characters"
+    state = {"presets": {}, "active": ""}
+
+    def load_presets():
+        return dict(state["presets"])
+
+    def save_presets(value):
+        state["presets"] = dict(value)
+
+    app = FastAPI()
+    app.include_router(create_characters_router(
+        load_presets, save_presets, lambda: state["active"],
+        lambda value: state.update(active=value), {"theme": {"color": "blue"}},
+        lambda value: value, str(char_dir), str(tmp_path / "presets.json"),
+        str(tmp_path / "active.json"), get_file_lock, write_bytes_atomic,
+        lambda raw: b"clean:" + raw, {},
+    ))
+    client = TestClient(app)
+    avatar = b"\\x89PNG\\r\\n\\x1a\\nimage"
+    response = client.post(
+        "/api/characters/save",
+        data={"char_id": "Alice", "name": "Alice", "reference_text": "hello", "speed": "1.0", "theme_json": "{}"},
+        files={
+            "voice_file": ("voice.wav", b"raw-voice", "audio/wav"),
+            "avatar_file": ("avatar.png", avatar, "image/png"),
+        },
+    )
+    assert response.status_code == 200
+    assert state["active"] == "alice"
+    assert state["presets"]["alice"]["name"] == "Alice"
+    assert (char_dir / "alice" / "voice.wav").read_bytes() == b"clean:raw-voice"
+    assert (char_dir / "alice" / "avatar.png").read_bytes() == avatar
+
+    response = client.delete("/api/characters/alice")
+    assert response.status_code == 200
+    assert "alice" not in state["presets"]
+    assert state["active"] == ""
+    assert not (char_dir / "alice").exists()

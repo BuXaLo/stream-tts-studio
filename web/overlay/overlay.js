@@ -186,7 +186,15 @@ function showDialogue(fullText, durationSeconds) {
   } else if (textAnim === 'word-fade') {
     cursor.style.display = "none";
     const words = fullText.split(" ");
-    textTarget.innerHTML = words.map(w => `<span class="word-span">${w}</span>`).join(" ");
+    const fragment = document.createDocumentFragment();
+    words.forEach((word, index) => {
+      if (index) fragment.appendChild(document.createTextNode(" "));
+      const span = document.createElement("span");
+      span.className = "word-span";
+      span.textContent = word;
+      fragment.appendChild(span);
+    });
+    textTarget.replaceChildren(fragment);
     const spans = textTarget.querySelectorAll('.word-span');
     const wordDelay = Math.max(40, speechMs / words.length);
 
@@ -197,9 +205,19 @@ function showDialogue(fullText, durationSeconds) {
     });
   } else if (textAnim === 'wavy-text') {
     cursor.style.display = "none";
-    textTarget.innerHTML = fullText.split("").map((c, i) => 
-      c === " " ? " " : `<span class="wavy-char" style="animation-delay: ${(i * 0.08) % 1.4}s">${c}</span>`
-    ).join("");
+    const fragment = document.createDocumentFragment();
+    fullText.split("").forEach((character, index) => {
+      if (character === " ") {
+        fragment.appendChild(document.createTextNode(" "));
+      } else {
+        const span = document.createElement("span");
+        span.className = "wavy-char";
+        span.style.animationDelay = `${(index * 0.08) % 1.4}s`;
+        span.textContent = character;
+        fragment.appendChild(span);
+      }
+    });
+    textTarget.replaceChildren(fragment);
   } else if (textAnim === 'glitch-decode') {
     cursor.style.display = "none";
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";

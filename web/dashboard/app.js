@@ -501,7 +501,7 @@ function renderSidebar() {
 
     let avatarHtml = '';
     if (item.has_avatar && item.avatar_url) {
-      avatarHtml = `<img src="${item.avatar_url}?_t=${Date.now()}" class="char-sidebar-avatar" alt="${item.name}">`;
+      avatarHtml = `<img src="${item.avatar_url}?_t=${Date.now()}" class="char-sidebar-avatar" alt="">`;
     } else {
       avatarHtml = `<div class="char-sidebar-avatar-placeholder">👤</div>`;
     }
@@ -510,7 +510,7 @@ function renderSidebar() {
       <div class="char-item-left">
         ${avatarHtml}
         <div class="char-item-info">
-          <span class="char-item-name">${item.name || id}</span>
+          <span class="char-item-name"></span>
           <span class="char-badge">
             <span class="active-dot"></span>
             ${id === activeCharId ? 'Активен' : id}
@@ -521,6 +521,7 @@ function renderSidebar() {
         <button class="btn-quick-play" title="Прослушать сэмпл голоса" data-char-id="${id}">▶</button>
       </div>
     `;
+    el.querySelector('.char-item-name').textContent = item.name || id;
 
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-quick-play')) return;
@@ -834,7 +835,15 @@ function runDynamicOverlayPreview(fullText, durationSec = 3.5) {
   } else if (textAnim === 'word-fade') {
     cursor.style.display = 'none';
     const words = fullText.split(' ');
-    textTarget.innerHTML = words.map(w => `<span class="word-span">${w}</span>`).join(' ');
+    const fragment = document.createDocumentFragment();
+    words.forEach((word, index) => {
+      if (index) fragment.appendChild(document.createTextNode(' '));
+      const span = document.createElement('span');
+      span.className = 'word-span';
+      span.textContent = word;
+      fragment.appendChild(span);
+    });
+    textTarget.replaceChildren(fragment);
     const spans = textTarget.querySelectorAll('.word-span');
     const wordDelay = Math.max(40, speechMs / words.length);
 
@@ -845,9 +854,19 @@ function runDynamicOverlayPreview(fullText, durationSec = 3.5) {
     });
   } else if (textAnim === 'wavy-text') {
     cursor.style.display = 'none';
-    textTarget.innerHTML = fullText.split('').map((c, i) =>
-      c === ' ' ? ' ' : `<span class="wavy-char" style="animation-delay: ${(i * 0.08) % 1.4}s">${c}</span>`
-    ).join('');
+    const fragment = document.createDocumentFragment();
+    fullText.split('').forEach((character, index) => {
+      if (character === ' ') {
+        fragment.appendChild(document.createTextNode(' '));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'wavy-char';
+        span.style.animationDelay = `${(index * 0.08) % 1.4}s`;
+        span.textContent = character;
+        fragment.appendChild(span);
+      }
+    });
+    textTarget.replaceChildren(fragment);
   } else if (textAnim === 'glitch-decode') {
     cursor.style.display = 'none';
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
@@ -1112,10 +1131,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     stitcherFiles.forEach((f, idx) => {
       const item = document.createElement('div');
       item.className = 'stitcher-item';
-      item.innerHTML = `
-        <span class="stitcher-item-name">${idx + 1}. ${f.name}</span>
-        <button class="btn-remove-item" data-idx="${idx}">✖</button>
-      `;
+
+      const name = document.createElement('span');
+      name.className = 'stitcher-item-name';
+      name.textContent = `${idx + 1}. ${f.name}`;
+
+      const removeButton = document.createElement('button');
+      removeButton.className = 'btn-remove-item';
+      removeButton.dataset.idx = String(idx);
+      removeButton.textContent = '✖';
+
+      item.append(name, removeButton);
       list.appendChild(item);
     });
 

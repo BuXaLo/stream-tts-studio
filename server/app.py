@@ -177,14 +177,17 @@ def validate_host(value):
     return host
 
 def validate_streamerbot_url(value):
-    parsed = urllib.parse.urlsplit(str(value).strip())
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
+    value = value.strip()
+    parsed = urllib.parse.urlsplit(value)
     try:
         valid_port = parsed.port is None or 1 <= parsed.port <= 65535
     except ValueError:
         valid_port = False
     if parsed.scheme not in ("http", "https") or not parsed.hostname or not valid_port or parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
-    return str(value).strip()
+    return value
 
 from studio.routes.system import create_system_router
 app.include_router(create_system_router(load_config, save_config, get_file_lock, CONFIG_FILE, ws_manager, validate_host, validate_port))

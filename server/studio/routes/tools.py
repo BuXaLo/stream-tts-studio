@@ -1,5 +1,4 @@
 """Audio processing, draft TTS and overlay preview API routes."""
-import asyncio
 import base64
 import io
 import json
@@ -232,7 +231,7 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
                         pass
     
     @router.post("/api/test_draft_tts")
-    async def api_test_draft_tts(
+    def api_test_draft_tts(
         text: str = Form(...),
         ref_text: str = Form(...),
         speed: float = Form(1.0),

@@ -1,5 +1,4 @@
 """Character and preset management API routes."""
-import asyncio
 import json
 import logging
 import os
@@ -59,7 +58,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
     
 
     @router.post("/api/characters/save")
-    async def api_save_character(
+    def api_save_character(
         char_id: str = Form(...),
         name: str = Form(...),
         reference_text: str = Form(...),

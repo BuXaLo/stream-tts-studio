@@ -65,3 +65,12 @@ def test_da_test_donation_returns_502_with_delivery_details(tmp_path):
     detail = response.json()["detail"]
     assert detail["status_code"] == 503
     assert detail["error"] == "offline"
+
+
+
+def test_da_config_rejects_invalid_streamerbot_action_and_url(tmp_path):
+    client, _ = make_client(tmp_path)
+    response = client.post("/api/da/config", json={"streamerbot_action": "[]"})
+    assert response.status_code == 400
+    response = client.post("/api/da/config", json={"streamerbot_url": "ftp://localhost:7474/DoAction"})
+    assert response.status_code == 400

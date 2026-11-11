@@ -9,7 +9,6 @@ let backendActive = false;
 let backendConnected = false;
 let shutdownRequested = false;
 let bootLineCount = 0;
-let bootCleared = false;
 
 const timeText = value => {
     const date = new Date(value);
@@ -137,27 +136,12 @@ function setLauncherButton(status) {
     }
 }
 
-function clearBootView() {
-    if (bootCleared) return;
-    bootCleared = true;
-    generations.length = 0;
-    logs.length = 0;
-    seenEvents.clear();
-    counts.info = counts.warning = counts.error = 0;
-    $("infoCount").textContent = "0";
-    $("warningCount").textContent = "0";
-    $("errorCount").textContent = "0";
-    renderGenerations();
-    renderLogs();
-}
-
 function connect(backendUrl) {
     const parsed = new URL(backendUrl);
     const scheme = parsed.protocol === "https:" ? "wss" : "ws";
     socket = new WebSocket(scheme + "://" + parsed.host + "/ws/monitor");
     socket.onopen = () => {
         backendConnected = true;
-        if (launcherMode) clearBootView();
         $("connectionText").textContent = "Подключено";
         $("connectionDot").parentElement.className = "status connected";
         if (!shutdownRequested) setLauncherButton("ready");
@@ -208,7 +192,7 @@ async function pollLauncher() {
         ]);
         if (!statusResponse.ok || !logResponse.ok) throw new Error("Не удалось получить состояние запуска");
         const status = await statusResponse.json();
-        if (!bootCleared) addStartupLines(await logResponse.text());
+        addStartupLines(await logResponse.text());
 
         if (status.status === "ready") {
             backendActive = true;

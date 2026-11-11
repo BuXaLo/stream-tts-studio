@@ -297,6 +297,3 @@ class DonationAlertsWorker:
         if not self.task or self.task.done():
             self.task = asyncio.create_task(self.run_loop())
 
-
-da_worker = DonationAlertsWorker()
-

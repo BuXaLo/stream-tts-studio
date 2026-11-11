@@ -252,7 +252,10 @@ class Win32TrayIcon:
 
     def stop(self):
         if self.hwnd:
-            self.user32.PostMessageW(self.hwnd, self.WM_CLOSE, 0, 0)
+            if not self.user32.PostMessageW(self.hwnd, self.WM_CLOSE, 0, 0):
+                self.app_controller.write_log(
+                    "Не удалось отправить WM_CLOSE окну системного трея: {}".format(ctypes.WinError())
+                )
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=3)
 
@@ -266,10 +269,22 @@ class Win32TrayIcon:
             self.ready.set()
         if self.error:
             return
-        message = wintypes.MSG()
-        while self.user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
-            self.user32.TranslateMessage(ctypes.byref(message))
-            self.user32.DispatchMessageW(ctypes.byref(message))
+        try:
+            message = wintypes.MSG()
+            while True:
+                result = self.user32.GetMessageW(ctypes.byref(message), None, 0, 0)
+                if result == -1:
+                    raise ctypes.WinError()
+                if result == 0:
+                    break
+                self.user32.TranslateMessage(ctypes.byref(message))
+                self.user32.DispatchMessageW(ctypes.byref(message))
+        except Exception:
+            self.error = traceback.format_exc()
+            self.app_controller.write_log(
+                "Ошибка цикла сообщений системного трея:\n{}".format(self.error)
+            )
+            exit_requested.set()
 
     def _create_window(self):
         WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
@@ -296,14 +311,70 @@ class Win32TrayIcon:
             ]
 
         self.NOTIFYICONDATAW = NOTIFYICONDATAW
-        self.user32.CreateWindowExW.restype = wintypes.HWND
-        self.user32.CreatePopupMenu.restype = wintypes.HMENU
-        self.user32.LoadImageW.restype = wintypes.HANDLE
-        self.user32.LoadIconW.restype = wintypes.HICON
-        self.user32.TrackPopupMenu.restype = wintypes.UINT
+        user32 = self.user32
         kernel32 = ctypes.windll.kernel32
+
+        # Явные сигнатуры обязательны: без них ctypes может обрезать
+        # 64-битные HWND/HINSTANCE при передаче дескрипторов.
+        user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
+        user32.RegisterClassW.restype = wintypes.ATOM
+        user32.CreateWindowExW.argtypes = [
+            wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID
+        ]
+        user32.CreateWindowExW.restype = wintypes.HWND
+        user32.DefWindowProcW.argtypes = [
+            wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t
+        ]
+        user32.DefWindowProcW.restype = ctypes.c_ssize_t
+        user32.DestroyWindow.argtypes = [wintypes.HWND]
+        user32.DestroyWindow.restype = wintypes.BOOL
+        user32.PostMessageW.argtypes = [
+            wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t
+        ]
+        user32.PostMessageW.restype = wintypes.BOOL
+        user32.PostQuitMessage.argtypes = [ctypes.c_int]
+        user32.PostQuitMessage.restype = None
+        user32.GetMessageW.argtypes = [
+            ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT
+        ]
+        user32.GetMessageW.restype = wintypes.BOOL
+        user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        user32.TranslateMessage.restype = wintypes.BOOL
+        user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        user32.DispatchMessageW.restype = ctypes.c_ssize_t
+        user32.CreatePopupMenu.argtypes = []
+        user32.CreatePopupMenu.restype = wintypes.HMENU
+        user32.AppendMenuW.argtypes = [
+            wintypes.HMENU, wintypes.UINT, ctypes.c_size_t, wintypes.LPCWSTR
+        ]
+        user32.AppendMenuW.restype = wintypes.BOOL
+        user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+        user32.GetCursorPos.restype = wintypes.BOOL
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.TrackPopupMenu.argtypes = [
+            wintypes.HMENU, wintypes.UINT, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, wintypes.HWND, wintypes.LPVOID
+        ]
+        user32.TrackPopupMenu.restype = wintypes.UINT
+        user32.DestroyMenu.argtypes = [wintypes.HMENU]
+        user32.DestroyMenu.restype = wintypes.BOOL
+        user32.LoadImageW.argtypes = [
+            wintypes.HANDLE, wintypes.LPCWSTR, wintypes.UINT,
+            ctypes.c_int, ctypes.c_int, wintypes.UINT
+        ]
+        user32.LoadImageW.restype = wintypes.HANDLE
+        self.shell32.Shell_NotifyIconW.argtypes = [
+            wintypes.DWORD, ctypes.POINTER(NOTIFYICONDATAW)
+        ]
+        self.shell32.Shell_NotifyIconW.restype = wintypes.BOOL
+        kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
         kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
         instance = kernel32.GetModuleHandleW(None)
+        if not instance:
+            raise ctypes.WinError()
 
         def wnd_proc(hwnd, message, wparam, lparam):
             if message == self.WM_TRAY:
@@ -335,14 +406,17 @@ class Win32TrayIcon:
         wc.lpfnWndProc = self.callback
         wc.hInstance = instance
         wc.lpszClassName = self.class_name
-        self.user32.RegisterClassW(ctypes.byref(wc))
-        self.hwnd = self.user32.CreateWindowExW(0, self.class_name, "TTS Studio Tray", 0,
-                                                0, 0, 0, 0, ctypes.c_void_p(-3), None, instance, None)
+        if not self.user32.RegisterClassW(ctypes.byref(wc)):
+            raise ctypes.WinError()
+        self.hwnd = self.user32.CreateWindowExW(
+            0, self.class_name, "TTS Studio Tray", 0,
+            0, 0, 0, 0, wintypes.HWND(-3), None, instance, None
+        )
         if not self.hwnd:
             raise ctypes.WinError()
         self.icon = self.user32.LoadImageW(None, ICON_FILE, 1, 0, 0, 0x0010 | 0x0040)
         if not self.icon:
-            self.icon = self.user32.LoadIconW(None, ctypes.c_void_p(32512))
+            raise ctypes.WinError()
         data = NOTIFYICONDATAW()
         data.cbSize = ctypes.sizeof(data)
         data.hWnd = self.hwnd
@@ -407,12 +481,20 @@ def backend_address():
 def acquire_singleton():
     global _singleton_handle
     kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
     kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.GetLastError.argtypes = []
+    kernel32.GetLastError.restype = wintypes.DWORD
+    user32.MessageBoxW.argtypes = [
+        wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.UINT
+    ]
+    user32.MessageBoxW.restype = ctypes.c_int
     _singleton_handle = kernel32.CreateMutexW(None, True, "Local\\StreamTTSStudioLauncher")
     if not _singleton_handle:
         raise ctypes.WinError()
     if kernel32.GetLastError() == 183:
-        ctypes.windll.user32.MessageBoxW(
+        user32.MessageBoxW(
             None, "TTS Studio уже запущена. Откройте монитор через значок в системном трее.",
             "TTS Studio", 0x40
         )

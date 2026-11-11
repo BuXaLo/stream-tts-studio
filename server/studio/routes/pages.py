@@ -18,6 +18,13 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
         monitor_file = os.path.join(os.path.dirname(dashboard_dir), "monitor", "index.html")
         return FileResponse(monitor_file)
 
+    @router.get("/monitor/{asset_name}")
+    def get_monitor_asset(asset_name: str):
+        if asset_name not in {"app.js", "style.css"}:
+            raise HTTPException(status_code=404, detail="Файл монитора не найден.")
+        asset_file = os.path.join(os.path.dirname(dashboard_dir), "monitor", asset_name)
+        return FileResponse(asset_file)
+
     @router.websocket("/ws/monitor")
     async def websocket_monitor(websocket: WebSocket):
         origin = websocket.headers.get("origin")

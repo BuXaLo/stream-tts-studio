@@ -6,9 +6,6 @@ import re
 import time
 import wave
 
-import numpy as np
-import torch
-
 from studio.services.text import sanitize_text
 
 cosyvoice = generation_lock = load_config = logger = np = torch = None
@@ -18,12 +15,14 @@ def load_cosyvoice_model(model_dir):
     from cosyvoice.cli.cosyvoice import AutoModel
     return AutoModel(model_dir=model_dir)
 
-def configure_tts(model, lock, config_loader, app_logger):
-    global cosyvoice, generation_lock, load_config, logger
+def configure_tts(model, lock, config_loader, app_logger, numpy_module, torch_module):
+    global cosyvoice, generation_lock, load_config, logger, np, torch
     cosyvoice = model
     generation_lock = lock
     load_config = config_loader
     logger = app_logger
+    np = numpy_module
+    torch = torch_module
 
 def clear_vram():
     if torch.cuda.is_available():

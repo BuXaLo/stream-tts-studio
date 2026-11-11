@@ -39,7 +39,7 @@ def create_donation_router(da_worker, load_da_config, save_da_config, load_da_to
     
     @router.post("/api/da/config")
     def api_save_da_config(data: dict):
-        with get_file_lock(DA_CONFIG_FILE):
+        with get_file_lock(da_config_file):
             da_cfg = load_da_config()
             if "enabled" in data: da_cfg["enabled"] = bool(data["enabled"])
             if "client_id" in data: da_cfg["client_id"] = str(data["client_id"]).strip()
@@ -111,10 +111,10 @@ def create_donation_router(da_worker, load_da_config, save_da_config, load_da_to
                 return HTMLResponse(f"<h3>Ошибка получения токена ({resp.status_code}): {html.escape(resp.text[:1000])}</h3>")
     
             tokens = resp.json()
-            with get_file_lock(DA_TOKENS_FILE):
+            with get_file_lock(da_tokens_file):
                 save_da_tokens(tokens)
             da_cfg["enabled"] = True
-            with get_file_lock(DA_CONFIG_FILE):
+            with get_file_lock(da_config_file):
                 save_da_config(da_cfg)
     
             return HTMLResponse("""

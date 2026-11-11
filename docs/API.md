@@ -7,6 +7,11 @@
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/` | Dashboard index |
+| GET | `/dashboard`, `/dashboard/` | Dashboard static mount |
+| GET | `/monitor`, `/monitor/` | Страница локального монитора |
+| GET | `/monitor/{asset_name}` | JS/CSS монитора |
+| WS | `/ws/monitor` | Локальные события и журнал монитора |
+| POST | `/api/monitor/shutdown` | Штатное выключение backend; только локальный клиент |
 | GET | `/overlay`, `/overlay/` | OBS Overlay |
 | WS | `/ws/overlay` | WebSocket для событий Overlay |
 | GET | `/api/system_config` | Системная конфигурация и состояние WS |
@@ -68,6 +73,20 @@ Overlay подключается к WebSocket на том же origin. Собы�
 - `draft_theme`: необязательная временная тема для предпросмотра.
 
 Overlay также принимает вложенные формы payload с `data` или `message`, если объект содержит `text`. Для HTTP mutation и WebSocket при наличии Origin выполняется проверка same-origin.
+
+## Launcher и монитор
+
+При запуске через `start_studio.bat` отдельный HTTP-сервер Launcher слушает только loopback на динамическом локальном порту. Его маршруты не являются частью backend API:
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/launcher-status` | Состояние backend в Launcher |
+| GET | `/startup-log` | Ранний журнал запуска |
+| POST | `/launcher-start` | Запустить backend через Launcher |
+| POST | `/launcher-stop` | Штатно остановить backend через Launcher |
+| POST | `/open-dashboard` | Открыть `/dashboard/` в браузере по умолчанию |
+
+Launcher проверяет локальные Host/Origin. В launcher-режиме кнопка монитора вызывает `/launcher-stop`, который передаёт управление штатному механизму остановки backend. Не использовать эти локальные endpoints извне.
 
 ## Остальные API
 

@@ -23,3 +23,8 @@ def test_parse_donation_json_string_and_list():
         "donor": "Alice", "amount": 10.0,
         "currency": "RUB", "message": ""
     }
+
+
+def test_parse_donation_rejects_unrelated_object():
+    assert parse_donation({}) is None
+    assert parse_donation({"username": "Viewer"}) is None

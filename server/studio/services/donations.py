@@ -15,7 +15,9 @@ def parse_donation(payload):
         return None
 
     donor = payload.get("username") or payload.get("user") or payload.get("donor") or "Добрый человек"
-    raw_amount = payload.get("amount", payload.get("sum", 0))
+    if "amount" not in payload and "sum" not in payload:
+        return None
+    raw_amount = payload.get("amount", payload.get("sum"))
     try:
         amount = float(str(raw_amount).strip().replace(",", "."))
     except (TypeError, ValueError, OverflowError):

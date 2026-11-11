@@ -791,7 +791,7 @@ def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, spee
 def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
     try:
         return _generate_voice_impl(raw_text, voice_wav_path, ref_text, speed)
-    except BaseException:
+    except Exception:
         try:
             clear_vram()
         except Exception:
@@ -1337,6 +1337,8 @@ async def api_test_draft_tts(
     temp_voice = None
     voice_path = None
 
+    if not text.strip() or not has_speakable_content(text):
+        raise HTTPException(status_code=400, detail="Нет текста для озвучки.")
     if not math.isfinite(speed):
         raise HTTPException(status_code=400, detail="Некорректное значение speed.")
     speed = max(0.5, min(2.0, speed))

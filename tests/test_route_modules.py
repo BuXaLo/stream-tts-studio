@@ -103,7 +103,7 @@ def test_character_save_and_delete_keep_files_and_presets_consistent(tmp_path):
         lambda raw: b"clean:" + raw, {},
     ))
     client = TestClient(app)
-    avatar = b"\\x89PNG\\r\\n\\x1a\\nimage"
+    avatar = b"\x89PNG\r\n\x1a\nimage"
     response = client.post(
         "/api/characters/save",
         data={"char_id": "Alice", "name": "Alice", "reference_text": "hello", "speed": "1.0", "theme_json": "{}"},

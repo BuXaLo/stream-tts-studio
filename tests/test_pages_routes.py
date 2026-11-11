@@ -30,11 +30,11 @@ def test_pages_and_websocket_origin_checks(tmp_path):
     manager = FakeWSManager()
     app = FastAPI()
     app.include_router(create_pages_router(str(dashboard), str(overlay), manager, same_origin))
-    client = TestClient(app, base_url="http://localhost:8765")
+    client = TestClient(app, base_url="http://testserver")
     assert client.get("/").text == "dashboard"
     assert client.get("/overlay").text == "overlay"
 
-    with client.websocket_connect("/ws/overlay", headers={"origin": "http://localhost:8765"}):
+    with client.websocket_connect("/ws/overlay", headers={"origin": "http://testserver"}):
         assert len(manager.connections) == 1
 
     with pytest.raises(WebSocketDisconnect) as exc:

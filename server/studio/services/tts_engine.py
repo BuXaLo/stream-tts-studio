@@ -11,7 +11,7 @@ import torch
 
 from studio.services.text import sanitize_text
 
-cosyvoice = generation_lock = load_config = logger = None
+cosyvoice = generation_lock = load_config = logger = np = torch = None
 PROMPT_CACHE = {}
 
 def load_cosyvoice_model(model_dir):
@@ -30,7 +30,7 @@ def clear_vram():
         torch.cuda.empty_cache()
     gc.collect()
 
-def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
+def clean_and_smooth_chunk(audio, sr: int = 24000):
     if len(audio) == 0:
         return audio
     audio = audio - np.mean(audio)
@@ -42,7 +42,7 @@ def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
         audio[-fade_len:] *= fade_out
     return audio
 
-def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
+def numpy_to_wav(audio, sample_rate: int) -> bytes:
     audio = np.asarray(audio, dtype=np.float32)
     audio = np.clip(audio, -1.0, 1.0)
     pcm = (audio * 32767).astype(np.int16)

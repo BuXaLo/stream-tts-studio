@@ -93,7 +93,7 @@ load_da_tokens = config_store.load_da_tokens
 save_da_tokens = config_store.save_da_tokens
 configure_worker(SERVER_DIR, LOG_DIR, load_config, load_da_config, load_da_tokens, save_da_tokens)
 from studio.services.tts_engine import PROMPT_CACHE, clear_vram, configure_tts, generate_voice
-configure_tts(cosyvoice, generation_lock, load_config, logger)
+configure_tts(cosyvoice, generation_lock, load_config, logger, np, torch)
 from studio.services.audio_tools import configure_audio_tools, convert_to_clean_wav
 configure_audio_tools(FFMPEG_PATH, TEMP_DIR)
 

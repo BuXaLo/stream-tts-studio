@@ -50,11 +50,17 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     @router.post("/api/monitor/shutdown")
     async def shutdown_monitor(request: Request):
         client_host = request.client.host if request.client else ""
+        request_host = request.url.hostname or ""
         try:
-            if not ipaddress.ip_address(client_host).is_loopback:
-                raise HTTPException(status_code=403, detail="Команда доступна только с локального компьютера.")
+            client_is_local = ipaddress.ip_address(client_host).is_loopback
         except ValueError:
-            raise HTTPException(status_code=403, detail="Команда доступна только с локального компьютера.")
+            client_is_local = False
+        try:
+            host_is_local = ipaddress.ip_address(request_host).is_loopback
+        except ValueError:
+            host_is_local = request_host.lower() == "localhost"
+        if not client_is_local or not host_is_local:
+            raise HTTPException(status_code=403, detail="Команда доступна только через локальный адрес студии.")
         if not monitor.schedule_shutdown():
             raise HTTPException(status_code=503, detail="Штатное выключение сейчас недоступно.")
         return {"status": "shutting_down"}

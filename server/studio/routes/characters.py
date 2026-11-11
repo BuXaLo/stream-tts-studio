@@ -20,7 +20,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         active = get_active_character_id()
         
         for char_id, data in presets.items():
-            avatar_path = os.path.join(CHARACTERS_DIR, char_id, "avatar.png")
+            avatar_path = os.path.join(characters_dir, char_id, "avatar.png")
             has_avatar = os.path.exists(avatar_path)
             data["has_avatar"] = has_avatar
             data["avatar_url"] = f"/char_files/{char_id}/avatar.png" if has_avatar else ""
@@ -30,11 +30,11 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
     @router.post("/api/presets/set_active")
     def api_set_active(data: dict):
         char_id = data.get("id")
-        with get_file_lock(PRESETS_FILE):
+        with get_file_lock(presets_file):
             presets = load_presets()
             if char_id not in presets:
                 raise HTTPException(status_code=404, detail="Персонаж не найден.")
-            with get_file_lock(ACTIVE_FILE):
+            with get_file_lock(active_file):
                 set_active_character_id(char_id)
         return {"status": "ok", "active": char_id}
     
@@ -46,7 +46,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         
         avatar_url = ""
         if target_id and target_id in presets and re.fullmatch(r"[a-z0-9_-]+", target_id):
-            avatar_path = os.path.join(CHARACTERS_DIR, target_id, "avatar.png")
+            avatar_path = os.path.join(characters_dir, target_id, "avatar.png")
             if os.path.exists(avatar_path):
                 avatar_url = f"/char_files/{target_id}/avatar.png"
                 
@@ -97,7 +97,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         except (TypeError, ValueError):
             theme = default_preset["theme"]
     
-        char_dir = os.path.join(CHARACTERS_DIR, char_id)
+        char_dir = os.path.join(characters_dir, char_id)
         os.makedirs(char_dir, exist_ok=True)
         voice_path = os.path.join(char_dir, "voice.wav")
         avatar_path = os.path.join(char_dir, "avatar.png")
@@ -107,7 +107,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         if avatar_bytes is not None:
             write_bytes_atomic(avatar_path, avatar_bytes)
     
-        with get_file_lock(PRESETS_FILE):
+        with get_file_lock(presets_file):
             presets = load_presets()
             presets[char_id] = {
                 "name": name,
@@ -123,24 +123,24 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
                     prompt_cache.pop(cache_key, None)
     
         if not get_active_character_id():
-            with get_file_lock(ACTIVE_FILE):
+            with get_file_lock(active_file):
                 set_active_character_id(char_id)
     
         return {"status": "ok", "char_id": char_id}
     
     @router.delete("/api/characters/{char_id}")
     def api_delete_character(char_id: str):
-        with get_file_lock(PRESETS_FILE):
+        with get_file_lock(presets_file):
             presets = load_presets()
             if char_id not in presets:
                 return {"status": "ok"}
             del presets[char_id]
             save_presets(presets)
-            with get_file_lock(ACTIVE_FILE):
+            with get_file_lock(active_file):
                 if get_active_character_id() == char_id:
                     set_active_character_id(list(presets.keys())[0] if presets else "")
     
-        char_dir = os.path.join(CHARACTERS_DIR, char_id)
+        char_dir = os.path.join(characters_dir, char_id)
         if os.path.exists(char_dir):
             shutil.rmtree(char_dir, ignore_errors=True)
         return {"status": "ok"}

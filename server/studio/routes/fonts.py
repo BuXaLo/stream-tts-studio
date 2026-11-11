@@ -12,8 +12,8 @@ def create_fonts_router(custom_fonts_dir, write_bytes_atomic):
     @router.get("/api/fonts")
     def api_get_fonts():
         custom_list = []
-        if os.path.exists(CUSTOM_FONTS_DIR):
-            for f in sorted(os.listdir(CUSTOM_FONTS_DIR)):
+        if os.path.exists(custom_fonts_dir):
+            for f in sorted(os.listdir(custom_fonts_dir)):
                 if f.lower().endswith(('.ttf', '.otf', '.woff2', '.woff')):
                     font_name = os.path.splitext(f)[0]
                     custom_list.append({
@@ -37,7 +37,7 @@ def create_fonts_router(custom_fonts_dir, write_bytes_atomic):
             clean_base = f"font_{int(time.time())}"
     
         final_filename = f"{clean_base}{ext}"
-        dest_path = os.path.join(CUSTOM_FONTS_DIR, final_filename)
+        dest_path = os.path.join(custom_fonts_dir, final_filename)
         if os.path.exists(dest_path):
             is_duplicate = True
         else:

@@ -32,7 +32,7 @@ def create_speak_router(load_presets, get_active_character_id, characters_dir, g
             raise HTTPException(status_code=404, detail=f"Персонаж '{char_id}' не найден.")
     
         char_data = presets[char_id]
-        voice_path = os.path.join(CHARACTERS_DIR, char_id, "voice.wav")
+        voice_path = os.path.join(characters_dir, char_id, "voice.wav")
         if not os.path.exists(voice_path):
             raise HTTPException(status_code=404, detail=f"Файл voice.wav для '{char_id}' не найден.")
     

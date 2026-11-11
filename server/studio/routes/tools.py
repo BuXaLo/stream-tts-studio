@@ -264,7 +264,7 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, generation_lock, co
             voice_path = temp_voice
         elif char_id:
             require_character(char_id)
-            existing_path = os.path.join(CHARACTERS_DIR, char_id, "voice.wav")
+            existing_path = os.path.join(characters_dir, char_id, "voice.wav")
             if os.path.exists(existing_path):
                 voice_path = existing_path
     

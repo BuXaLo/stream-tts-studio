@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import ctypes
 import asyncio
 import subprocess
 import time
@@ -29,6 +30,21 @@ LOG_DIR = ENV["LOG_DIR"]
 DASHBOARD_DIR = ENV["DASHBOARD_DIR"]
 OVERLAY_DIR = ENV["OVERLAY_DIR"]
 logger = ENV["logger"]
+
+_INSTANCE_MUTEX = None
+if os.name == "nt":
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_mutex = kernel32.CreateMutexW
+    create_mutex.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+    create_mutex.restype = ctypes.c_void_p
+    _INSTANCE_MUTEX = create_mutex(None, False, "Local\\StreamTTSStudio")
+    if not _INSTANCE_MUTEX:
+        raise OSError(ctypes.get_last_error(), "Не удалось создать mutex экземпляра студии")
+    if ctypes.get_last_error() == 183:
+        logger.error("Студия уже запущена. Второй экземпляр не будет загружать модель.")
+        if os.environ.get("STUDIO_MONITOR_MODE") == "1":
+            ctypes.windll.user32.MessageBoxW(None, "Студия уже запущена. Используйте существующее окно мониторинга.", "TTS Studio", 0x40)
+        sys.exit(1)
 
 from studio.core.monitor import MonitorLogHandler, set_shutdown_callback
 logger.addHandler(MonitorLogHandler())

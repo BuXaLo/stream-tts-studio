@@ -21,8 +21,13 @@ def test_monitor_launcher_tray_and_backend_lifecycle():
     assert "Ошибка цикла сообщений системного трея" in source
     assert "LoadIconW(None" not in source
     assert '"/launcher-start"' in source
+    assert '"/launcher-stop"' in source
+    assert 'return self.backend_url + "/dashboard/"' in source
+    assert "def open_monitor_window(url):" in source
+    assert '"--app=" + url' in source
     assert '"/open-dashboard"' in source
-    assert "webbrowser.open(monitor_url, new=2)" in source
+    assert "open_monitor_window(monitor_url)" in source
+    assert "open_monitor_window(self.monitor_url)" in source
     assert "Открыть монитор" in source
     assert "Открыть Dashboard" in source
     assert "Выход" in source

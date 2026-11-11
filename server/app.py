@@ -540,10 +540,10 @@ def sanitize_text(text: str) -> str:
     return text.strip()
 
 def sanitize_overlay_text(text: str) -> str:
-    return re.sub(r'https?://\\S+|www\\.\\S+', 'ссылка', str(text))
+    return re.sub(r'https?://\S+|www\.\S+', 'ссылка', str(text))
 
 def has_speakable_content(text: str) -> bool:
-    cleaned = re.sub(r'[\\u200B\\u200D\\uFE0F\\u20E3]', '', sanitize_text(text))
+    cleaned = re.sub(r'[\u200B\u200D\uFE0F\u20E3]', '', sanitize_text(text))
     return any(char.isalnum() for char in cleaned)
 
 def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
@@ -1192,7 +1192,7 @@ def api_trigger_overlay_preview(data: dict):
 
     ws_manager.broadcast_sync({
         "event": "mita_dialogue",
-        "text": text,
+        "text": sanitize_overlay_text(text),
         "duration": duration,
         "char_id": char_id,
         "draft_theme": draft_theme
@@ -1262,11 +1262,11 @@ def api_delete_character(char_id: str):
             save_presets(presets)
         else:
             return {"status": "ok"}
-    if char_id in presets:
-        char_dir = os.path.join(CHARACTERS_DIR, char_id)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir, ignore_errors=True)
-        if get_active_character_id() == char_id:
+    char_dir = os.path.join(CHARACTERS_DIR, char_id)
+    if os.path.exists(char_dir):
+        shutil.rmtree(char_dir, ignore_errors=True)
+    if get_active_character_id() == char_id:
+        with get_file_lock(ACTIVE_FILE):
             set_active_character_id(list(presets.keys())[0] if presets else "")
     return {"status": "ok"}
 

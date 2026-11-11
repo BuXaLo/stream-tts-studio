@@ -11,9 +11,12 @@ from fastapi.responses import FileResponse, Response
 
 def _is_loopback_address(value):
     try:
-        return ipaddress.ip_address(value).is_loopback
+        address = ipaddress.ip_address(value)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+            return address.ipv4.is_loopback
+        return address.is_loopback
     except ValueError:
-        return str(value).lower() == "localhost"
+        return str(value).lower() in {"localhost", "localhost."}
 
 
 def _is_local_monitor_connection(client_host, request_host):
@@ -23,6 +26,7 @@ def _is_local_monitor_connection(client_host, request_host):
 def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     router = APIRouter()
     from studio.core import monitor
+    monitor_logger = logging.getLogger("studio.monitor.websocket")
 
     @router.get("/monitor")
     @router.get("/monitor/")
@@ -50,9 +54,10 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
             await websocket.close(code=1008)
             return
         await websocket.accept()
-        monitor_logger.info("Monitor WebSocket connected (client=%s)", client_host)
-        events = monitor.subscribe()
+        events = None
         try:
+            monitor_logger.info("Monitor WebSocket connected (client=%s)", client_host)
+            events = monitor.subscribe()
             for event in monitor.history():
                 await websocket.send_json(event)
             while True:
@@ -66,11 +71,12 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
                     await websocket.close(code=1001)
                     break
         except WebSocketDisconnect:
-            pass
+            monitor_logger.info("Monitor WebSocket disconnected")
         except Exception:
-            pass
+            monitor_logger.exception("Monitor WebSocket failed while delivering events")
         finally:
-            monitor.unsubscribe(events)
+            if events is not None:
+                monitor.unsubscribe(events)
 
     @router.post("/api/monitor/shutdown")
     async def shutdown_monitor(request: Request):

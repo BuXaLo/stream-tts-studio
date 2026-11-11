@@ -31,31 +31,47 @@ Stream TTS Studio — локальное Windows-приложение для с�
 ## 4. Структура Git-репозитория
 
 ```text
-/
-├── README.md
-├── start_server.bat
-├── server/
-│   ├── app.py
-│   └── fonts/
-└── web/
-    ├── dashboard/
-    │   ├── index.html
-    │   ├── app.js
-    │   ├── builder.js
-    │   ├── style.css
-    │   └── vendor/
-    └── overlay/
-        ├── overlay.html
-        ├── overlay.js
-        └── overlay.css
+server/
+├── app.py
+└── studio/
+    ├── core/
+    │   ├── env.py
+    │   ├── config.py
+    │   ├── storage.py
+    │   ├── validation.py
+    │   └── ws.py
+    ├── services/
+    │   ├── text.py
+    │   ├── tts_engine.py
+    │   ├── da_worker.py
+    │   ├── donations.py
+    │   ├── streamerbot.py
+    │   └── audio_tools.py
+    └── routes/
+        ├── pages.py
+        ├── system.py
+        ├── donations.py
+        ├── characters.py
+        ├── fonts.py
+        ├── tools.py
+        └── speak.py
+tests/
+.github/workflows/tests.yml
 ```
 
-В документации также находится `dosc/`. Runtime-данные и portable archive могут присутствовать в рабочей установке, но отсутствовать в Git.
-
+Runtime-данные и portable archive могут присутствовать в рабочей установке, но отсутствуют в Git. `server/app.py` остаётся штатной точкой запуска: bootstrap путей, настройка окружения, загрузка модели, создание FastAPI и подключение роутеров.
+ 
 ## 5. Компоненты и потоки
 
 ### Backend
-`server/app.py` содержит FastAPI routes, TTS orchestration, аудиообработку, хранение настроек, DonationAlerts worker и WebSocket broadcast. Он загружает ML-компоненты из portable runtime и управляет сериализацией доступа к генерации.
+
+`server/app.py` — тонкий entrypoint. Он первым добавляет `server/` в `sys.path`, затем вызывает `studio.core.env.configure_environment()` до импорта PyTorch/CosyVoice, загружает модель через `studio.services.tts_engine`, создаёт FastAPI и подключает APIRouter.
+
+- `studio.core`: пути и переменные окружения, конфигурация, атомарное хранилище, валидация и WebSocket manager.
+- `studio.services`: текст, CosyVoice inference, DonationAlerts worker/parser, Streamer.bot delivery и FFmpeg helper.
+- `studio.routes`: страницы/WS, системные настройки, DonationAlerts OAuth/API, персонажи, шрифты, инструменты и `POST /speak`.
+
+Whisper/Demucs и аудио endpoint orchestration находятся в `routes/tools.py`; `services/audio_tools.py` содержит общий FFmpeg helper. GPU-модель и генерация остаются в TTS service.
 
 Большой размер файла — вопрос сопровождаемости, а не сам по себе дефект безопасности или доказательство плохой работы. Не разбивать модуль механически: сначала зафиксировать контракты и покрыть сценарии регрессионными проверками.
 

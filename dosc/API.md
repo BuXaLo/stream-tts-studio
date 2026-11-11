@@ -1,6 +1,6 @@
 # HTTP и WebSocket API
 
-Базовый адрес по умолчанию: `http://127.0.0.1:8765`. Точный набор маршрутов ниже извлечён из FastAPI-декораторов в `server/app.py`. Swagger доступен на `/docs`, если сервер запущен с настройками FastAPI по умолчанию.
+Базовый адрес по умолчанию: `http://127.0.0.1:8765`. Маршруты разделены на APIRouter в `server/studio/routes/`; `server/app.py` подключает их. Swagger доступен на `/docs`, если сервер запущен с настройками FastAPI по умолчанию.
 
 ## Основные маршруты
 
@@ -10,12 +10,12 @@
 | GET | `/overlay`, `/overlay/` | OBS Overlay |
 | WS | `/ws/overlay` | WebSocket для событий Overlay |
 | GET | `/api/system_config` | Системная конфигурация и состояние WS |
-| POST | `/api/system_config` | Сохранение host/port/n_timesteps/browser flag |
+| POST | `/api/system_config` | Сохранение host/port/n_timesteps/browser flag; port — целое 1–65535 |
 | GET | `/api/da/config` | Настройки и статус DonationAlerts |
 | POST | `/api/da/config` | Сохранение настроек DonationAlerts |
 | GET | `/api/da/auth_url` | Формирование OAuth URL |
 | GET | `/api/da/callback` | OAuth callback |
-| POST | `/api/da/test_donation` | Тестовый вызов Streamer.bot |
+| POST | `/api/da/test_donation` | Тестовый вызов Streamer.bot; при отказе HTTP 502 с причиной |
 | GET | `/api/presets` | Список персонажей и активный ID |
 | POST | `/api/presets/set_active` | Выбор активного персонажа |
 | GET | `/api/active_overlay_config` | Тема и аватар персонажа |
@@ -47,7 +47,7 @@ JSON body:
 - `character` необязателен: используется активный персонаж.
 - `speed` необязателен: используется скорость пресета.
 - Ответ: `audio/wav`.
-- При ошибке возвращается HTTP error с detail.
+- 400 — пустой/неозвучиваемый текст или некорректный speed; 404 — персонаж/voice.wav не найден; 503 — нехватка VRAM; 500 — другая ошибка генерации.
 
 Пример:
 
@@ -67,7 +67,7 @@ Overlay подключается к WebSocket на том же origin. Собы�
 - `char_id`: ID персонажа;
 - `draft_theme`: необязательная временная тема для предпросмотра.
 
-Overlay также принимает вложенные формы payload с `data` или `message`, если объект содержит `text`.
+Overlay также принимает вложенные формы payload с `data` или `message`, если объект содержит `text`. Для HTTP mutation и WebSocket при наличии Origin выполняется проверка same-origin.
 
 ## Остальные API
 

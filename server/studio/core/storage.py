@@ -39,6 +39,17 @@ def read_json(path, default=None, *, strict=False):
     """Read JSON, falling back to one .bak generation without overwriting data."""
     path = os.fspath(path)
     if not os.path.exists(path):
+        backup_path = path + ".bak"
+        if os.path.exists(backup_path):
+            try:
+                value = _load_json(backup_path)
+            except (OSError, ValueError, TypeError) as backup_error:
+                if strict:
+                    raise StorageError("JSON backup is unreadable for {!r}: {}".format(path, backup_error)) from backup_error
+                _logger.warning("JSON backup is unreadable for %s; using in-memory default", path)
+                return copy.deepcopy(default)
+            _logger.warning("Recovered missing JSON file from backup: %s", backup_path)
+            return value
         return copy.deepcopy(default)
 
     try:

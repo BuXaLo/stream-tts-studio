@@ -6,7 +6,7 @@
 
 Неизменяемые условия:
 - не менять portable archive, portable Python, CUDA, PyTorch, CosyVoice, модели и версии runtime;
-- не менять способ запуска через текущий BAT;
+- сохранять совместимость обоих способов запуска: рекомендуемый `start_studio.bat` (Launcher/tray) и резервный `start_server.bat` (консольный backend);
 - не менять существующие REST routes, методы, JSON-поля и типы ответов без отдельного согласования;
 - не менять WebSocket endpoint/event schema и OBS Browser Source URL;
 - не менять генерируемые C# Actions, Streamer.bot endpoints и воспроизведение WAV;
@@ -83,7 +83,7 @@
 
 ## Правила релиза каждого этапа
 
-1. Один логически цельный набор изменений — отдельный commit в `dev`.
+1. Один логически цельный набор изменений — отдельный commit в согласованной рабочей ветке (сейчас `dev_test`).
 2. До изменения — baseline tests; после — те же tests плюс новые регрессионные.
 3. Сверить diff: никаких незапланированных изменений runtime, API, JSON schema или generated actions.
 4. Smoke test по [OPERATIONS.md](OPERATIONS.md).

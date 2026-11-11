@@ -73,6 +73,22 @@ def _replace_with_retry(source, destination):
     raise last_error
 
 
+def write_bytes_atomic(path, data):
+    """Atomically replace a binary asset using a sibling temporary file."""
+    path = os.fspath(path)
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=".studio-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _replace_with_retry(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
 def write_json_atomic(path, data):
     """Write UTF-8 JSON atomically and retain one previous valid generation."""
     path = os.fspath(path)

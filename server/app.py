@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+import ipaddress
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
@@ -23,7 +24,7 @@ from typing import Optional, List
 import requests
 import websockets
 
-from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic
+from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -538,6 +539,13 @@ def sanitize_text(text: str) -> str:
     text = re.sub(r'([.!?])\1{2,}', r'\1\1', text)
     return text.strip()
 
+def sanitize_overlay_text(text: str) -> str:
+    return re.sub(r'https?://\\S+|www\\.\\S+', 'ссылка', str(text))
+
+def has_speakable_content(text: str) -> bool:
+    cleaned = re.sub(r'[\\u200B\\u200D\\uFE0F\\u20E3]', '', sanitize_text(text))
+    return any(char.isalnum() for char in cleaned)
+
 def clean_and_smooth_chunk(audio: np.ndarray, sr: int = 24000) -> np.ndarray:
     if len(audio) == 0:
         return audio
@@ -562,7 +570,7 @@ def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
         wav.writeframes(pcm.tobytes())
     return buffer.getvalue()
 
-def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
+def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
     global PROMPT_CACHE
     cfg = load_config()
     n_timesteps = int(cfg.get("n_timesteps", 6))
@@ -584,6 +592,8 @@ def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: flo
                 prompt_text_norm = PROMPT_CACHE[cache_key]
             else:
                 prompt_text_norm = cosyvoice.frontend.text_normalize(prompt_text, split=False, text_frontend=True)
+                if len(PROMPT_CACHE) >= 64:
+                    PROMPT_CACHE.pop(next(iter(PROMPT_CACHE)))
                 PROMPT_CACHE[cache_key] = prompt_text_norm
 
             sr = cosyvoice.sample_rate
@@ -627,6 +637,16 @@ def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: flo
 
             return numpy_to_wav(final_audio, sr), duration
 
+def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
+    try:
+        return _generate_voice_impl(raw_text, voice_wav_path, ref_text, speed)
+    except BaseException:
+        try:
+            clear_vram()
+        except Exception:
+            logging.getLogger(__name__).exception("Ошибка очистки VRAM после сбоя генерации")
+        raise
+
 # ==================== СИСТЕМНЫЕ НАСТРОЙКИ API ====================
 @app.get("/api/system_config")
 def api_get_system_config():
@@ -638,13 +658,47 @@ def api_get_system_config():
     }
 
 @app.post("/api/system_config")
+def validate_host(value):
+    host = str(value).strip()
+    if host.lower() == "localhost" or host == "0.0.0.0":
+        return host
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный host. Укажите localhost, 0.0.0.0 или IP-адрес.")
+    return host
+
+def validate_streamerbot_url(value):
+    parsed = urllib.parse.urlsplit(str(value).strip())
+    try:
+        valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+    except ValueError:
+        valid_port = False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or not valid_port or parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
+    return str(value).strip()
+
+@app.post("/api/system_config")
 def api_save_system_config(data: dict):
     with get_file_lock(CONFIG_FILE):
         cfg = load_config()
-        if "host" in data: cfg["host"] = str(data["host"]).strip()
-        if "port" in data: cfg["port"] = int(data["port"])
-        if "n_timesteps" in data: cfg["n_timesteps"] = max(4, min(15, int(data["n_timesteps"])))
-        if "auto_open_browser" in data: cfg["auto_open_browser"] = bool(data["auto_open_browser"])
+        if "host" in data:
+            cfg["host"] = validate_host(data["host"])
+        if "port" in data:
+            try:
+                port = int(data["port"])
+            except (TypeError, ValueError, OverflowError):
+                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
+            if isinstance(data["port"], bool) or not 1024 <= port <= 65535:
+                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
+            cfg["port"] = port
+        if "n_timesteps" in data:
+            try:
+                cfg["n_timesteps"] = max(4, min(15, int(data["n_timesteps"])))
+            except (TypeError, ValueError, OverflowError):
+                raise HTTPException(status_code=400, detail="n_timesteps должен быть целым числом.")
+        if "auto_open_browser" in data:
+            cfg["auto_open_browser"] = bool(data["auto_open_browser"])
         save_config(cfg)
     return {"status": "ok", "config": cfg}
 
@@ -653,8 +707,12 @@ def api_save_system_config(data: dict):
 def api_get_da_config():
     da_cfg = load_da_config()
     tokens = load_da_tokens()
+    public_config = dict(da_cfg)
+    client_secret_set = bool(public_config.get("client_secret"))
+    public_config["client_secret"] = ""
     return {
-        "config": da_cfg,
+        "config": public_config,
+        "client_secret_set": client_secret_set,
         "has_tokens": tokens is not None,
         "redirect_uri": da_worker.get_redirect_uri(),
         "authorized_user": da_worker.authorized_user,
@@ -668,9 +726,18 @@ def api_save_da_config(data: dict):
         da_cfg = load_da_config()
         if "enabled" in data: da_cfg["enabled"] = bool(data["enabled"])
         if "client_id" in data: da_cfg["client_id"] = str(data["client_id"]).strip()
-        if "client_secret" in data: da_cfg["client_secret"] = str(data["client_secret"]).strip()
-        if "streamerbot_url" in data: da_cfg["streamerbot_url"] = str(data["streamerbot_url"]).strip()
-        if "streamerbot_action" in data: da_cfg["streamerbot_action"] = str(data["streamerbot_action"]).strip()
+        if str(data.get("client_secret", "")).strip(): da_cfg["client_secret"] = str(data["client_secret"]).strip()
+        if "streamerbot_url" in data: da_cfg["streamerbot_url"] = validate_streamerbot_url(data["streamerbot_url"])
+        if "streamerbot_action" in data:
+            action = str(data["streamerbot_action"]).strip()
+            if action.startswith("{"):
+                try:
+                    parsed_action = json.loads(action)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail="Поле action содержит некорректный JSON.")
+                if not isinstance(parsed_action, dict):
+                    raise HTTPException(status_code=400, detail="JSON action должен быть объектом.")
+            da_cfg["streamerbot_action"] = action
         save_da_config(da_cfg)
     return {"status": "ok", "config": da_cfg}
 
@@ -875,7 +942,7 @@ async def api_trim_and_transcribe(
             wav_bytes = f.read()
 
         return {
-            "text": text,
+            "text": sanitize_overlay_text(text),
             "audio_base64": base64.b64encode(wav_bytes).decode('utf-8')
         }
     except Exception as e:
@@ -1100,7 +1167,7 @@ async def api_test_draft_tts(
 
             ws_manager.broadcast_sync({
                 "event": "mita_dialogue",
-                "text": text,
+                "text": sanitize_overlay_text(text),
                 "duration": duration,
                 "char_id": char_id or get_active_character_id(),
                 "draft_theme": draft_theme
@@ -1211,8 +1278,8 @@ class SpeakRequest(BaseModel):
 @app.post("/speak")
 def api_speak(request: SpeakRequest):
     raw_text = request.text.strip()
-    if not raw_text:
-        raise HTTPException(status_code=400, detail="Пустой текст.")
+    if not raw_text or not has_speakable_content(raw_text):
+        raise HTTPException(status_code=400, detail="Нет текста для озвучки.")
 
     presets = load_presets()
     char_id = request.character or get_active_character_id()
@@ -1224,7 +1291,10 @@ def api_speak(request: SpeakRequest):
     if not os.path.exists(voice_path):
         raise HTTPException(status_code=404, detail=f"Файл voice.wav для '{char_id}' не найден.")
 
-    speed = request.speed or char_data.get("speed", 1.0)
+    try:
+        speed = max(0.5, min(2.0, float(request.speed))) if request.speed is not None else char_data.get("speed", 1.0)
+    except (TypeError, ValueError, OverflowError):
+        raise HTTPException(status_code=400, detail="Некорректное значение speed.")
     ref_text = char_data.get("reference_text", "")
 
     try:
@@ -1233,14 +1303,19 @@ def api_speak(request: SpeakRequest):
 
         ws_manager.broadcast_sync({
             "event": "mita_dialogue",
-            "text": raw_text,
+            "text": sanitize_overlay_text(raw_text),
             "duration": duration,
             "char_id": char_id
         })
 
         return Response(content=wav_bytes, media_type="audio/wav")
+    except torch.cuda.OutOfMemoryError:
+        logging.getLogger(__name__).exception("CUDA out of memory during /speak")
+        raise HTTPException(status_code=503, detail="Недостаточно видеопамяти для генерации.")
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[SPEAK ERROR] Ошибка генерации: {str(e)}")
+        logging.getLogger(__name__).exception("Ошибка генерации /speak")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
@@ -1250,6 +1325,7 @@ if __name__ == "__main__":
     port = int(cfg.get("port", 8765))
     
     if cfg.get("auto_open_browser", True):
-        threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}/dashboard")).start()
+        browser_host = "127.0.0.1" if host == "0.0.0.0" else ("[{}]".format(host) if ":" in host and not host.startswith("[") else host)
+        threading.Timer(1.0, lambda: webbrowser.open(f"http://{browser_host}:{port}/dashboard")).start()
         
     uvicorn.run(app, host=host, port=port, log_level="info")

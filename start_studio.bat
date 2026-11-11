@@ -9,7 +9,7 @@ set "APP=%BASE_DIR%server\app.py"
 if not exist "%PYTHONW%" (
     echo [INFO] pythonw.exe не найден. Запускается резервный консольный режим.
     call "%BASE_DIR%start_server.bat"
-    exit /b %errorlevel%
+    exit /b
 )
 
 set "STUDIO_MONITOR_MODE=1"

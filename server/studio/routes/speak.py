@@ -73,7 +73,8 @@ def create_speak_router(load_presets, get_active_character_id, characters_dir, g
             publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error="Недостаточно видеопамяти")
             logging.getLogger(__name__).exception("CUDA out of memory during /speak")
             raise HTTPException(status_code=503, detail="Недостаточно видеопамяти для генерации.")
-        except HTTPException:
+        except HTTPException as exc:
+            publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error=str(exc.detail)[:500])
             raise
         except Exception as e:
             publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error=str(e)[:500])

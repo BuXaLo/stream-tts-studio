@@ -32,8 +32,9 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
                 await websocket.send_json(event)
             while True:
                 try:
-                    event = await asyncio.to_thread(events.get, True, 15)
+                    event = events.get_nowait()
                 except queue.Empty:
+                    await asyncio.sleep(0.25)
                     continue
                 await websocket.send_json(event)
                 if event.get("type") == "shutdown":

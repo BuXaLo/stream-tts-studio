@@ -11,6 +11,7 @@ class EventHub:
         self._history = deque(maxlen=history_size)
         self._queue_size = queue_size
         self._subscribers = set()
+        self._sequence = 0
         self._lock = threading.RLock()
 
     @staticmethod
@@ -21,6 +22,8 @@ class EventHub:
         item = dict(event)
         item.setdefault("timestamp", self.timestamp())
         with self._lock:
+            self._sequence += 1
+            item["event_id"] = self._sequence
             self._history.append(item)
             subscribers = tuple(self._subscribers)
         for subscriber in subscribers:
@@ -89,7 +92,7 @@ class MonitorLogHandler(logging.Handler):
                 message = message[:4000] + "…"
             hub.publish({
                 "type": "log",
-                "level": record.levelname.lower(),
+                "level": "error" if record.levelno >= logging.ERROR else ("warning" if record.levelno >= logging.WARNING else "info"),
                 "logger": record.name,
                 "message": message,
                 "timestamp": datetime.fromtimestamp(record.created).astimezone().isoformat(timespec="seconds")

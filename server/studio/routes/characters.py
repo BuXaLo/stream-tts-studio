@@ -82,7 +82,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
     
         avatar_bytes = None
         if avatar_file:
-            avatar_bytes = await avatar_file.read()
+            avatar_bytes = avatar_file.file.read()
             if not (
                 avatar_bytes.startswith(b"\x89PNG\r\n\x1a\n")
                 or avatar_bytes.startswith(b"\xff\xd8\xff")

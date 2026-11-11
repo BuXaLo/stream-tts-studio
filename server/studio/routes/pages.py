@@ -8,6 +8,17 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 from fastapi.responses import FileResponse, Response
 
 
+def _is_loopback_address(value):
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return str(value).lower() == "localhost"
+
+
+def _is_local_monitor_connection(client_host, request_host):
+    return _is_loopback_address(client_host) and _is_loopback_address(request_host)
+
+
 def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     router = APIRouter()
     from studio.core import monitor
@@ -27,6 +38,11 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
 
     @router.websocket("/ws/monitor")
     async def websocket_monitor(websocket: WebSocket):
+        client_host = websocket.client.host if websocket.client else ""
+        request_host = websocket.url.hostname or ""
+        if not _is_local_monitor_connection(client_host, request_host):
+            await websocket.close(code=1008)
+            return
         origin = websocket.headers.get("origin")
         host = websocket.headers.get("host", "")
         if origin and not same_origin(origin, host, websocket.url.scheme):
@@ -58,15 +74,7 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
     async def shutdown_monitor(request: Request):
         client_host = request.client.host if request.client else ""
         request_host = request.url.hostname or ""
-        try:
-            client_is_local = ipaddress.ip_address(client_host).is_loopback
-        except ValueError:
-            client_is_local = False
-        try:
-            host_is_local = ipaddress.ip_address(request_host).is_loopback
-        except ValueError:
-            host_is_local = request_host.lower() == "localhost"
-        if not client_is_local or not host_is_local:
+        if not _is_local_monitor_connection(client_host, request_host):
             raise HTTPException(status_code=403, detail="Команда доступна только через локальный адрес студии.")
         if not monitor.schedule_shutdown():
             raise HTTPException(status_code=503, detail="Штатное выключение сейчас недоступно.")

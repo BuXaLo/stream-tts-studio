@@ -21,3 +21,12 @@ def test_monitor_page_and_assets_are_served(tmp_path):
         assert client.get("/monitor/app.js").text == "window.monitorLoaded = true;"
         assert client.get("/monitor/style.css").text == "body { color: white; }"
         assert client.get("/monitor/../app.py").status_code == 404
+
+
+def test_monitor_connection_requires_loopback_client_and_host():
+    from studio.routes.pages import _is_local_monitor_connection
+
+    assert _is_local_monitor_connection("127.0.0.1", "localhost")
+    assert _is_local_monitor_connection("::1", "::1")
+    assert not _is_local_monitor_connection("192.168.1.10", "192.168.1.10")
+    assert not _is_local_monitor_connection("127.0.0.1", "attacker.example")

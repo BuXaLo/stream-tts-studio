@@ -191,12 +191,12 @@
 
 **Куда.** `api_trim_and_transcribe`, `api_normalize_audio`, `api_isolate_vocal`, `api_convert_to_telegram_ogg`, `api_test_draft_tts`, `api_save_character`, `convert_to_clean_wav`.
 
-- [ ] Решать для каждого endpoint отдельно. Если единственный `await` в endpoint — чтение `UploadFile`, перевести его на `def` и читать через `audio.file.read()` (FastAPI выполнит синхронный endpoint в threadpool). `async` оставлять только при реальной необходимости в async I/O; тяжёлую синхронную работу внутри `async` выносить в `asyncio.to_thread`.
-- [ ] `subprocess.run(ffmpeg)` с `timeout` (например, 120 с), `TimeoutExpired` → понятная ошибка.
-- [ ] Whisper и Demucs выполнять под `generation_lock` (защита от OOM, если инструмент случайно запущен при работающей озвучке).
-- [ ] `clear_vram()` вызывать только там, где использовался GPU (Whisper, Demucs).
-- [ ] `shifts` ограничить 1–10, `target_gain` 0.1–1.0, `start/end` проверять до обработки.
-- [ ] `api_save_character`: сначала валидировать входные данные, затем писать `voice.wav` и `avatar.png` через временный файл + `os.replace`, и **только потом** обновлять `presets`. После замены голоса сбросить кэш для этого пути (см. S8).
+- [x] Endpoints инструментов без реальной необходимости в async I/O реализованы как синхронные `def`; загрузки читаются через `UploadFile.file.read()`.
+- [x] `subprocess.run(ffmpeg)` ограничен timeout 120 секунд; `TimeoutExpired` преобразуется в понятную HTTP 504.
+- [x] Whisper и Demucs выполняются под `generation_lock`.
+- [x] `clear_vram()` вызывается в cleanup GPU-путей Whisper/Demucs при использовании CUDA.
+- [x] `shifts` ограничен 1–10, `target_gain` — 0.1–1.0, `start/end` валидируются до обработки.
+- [x] `api_save_character` записывает файлы через атомарный helper до обновления `presets`; после замены голоса сбрасывается prompt cache.
 - [x] Аватар: проверка сигнатуры PNG/JPEG реализована в `server/studio/routes/characters.py` до записи файла. **Ограничение размера файла не реализовано** и остаётся частью отдельной задачи по согласованию upload limits.
 
 **Тесты:** endpoints без реальной необходимости в async I/O работают как `def`; endpoint с реальным async I/O остаётся `async def`; чтение `UploadFile` через `audio.file.read()` проверено на соответствующих sync-endpoints; ответы прежние; `subprocess` по таймауту; запись голоса не оставляет частичный файл при сбое.

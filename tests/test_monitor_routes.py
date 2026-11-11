@@ -57,3 +57,6 @@ def test_monitor_websocket_accepts_connection_and_delivers_history(tmp_path, mon
             event = websocket.receive_json()
             assert event["type"] == "log"
             assert event["message"] == "monitor websocket test"
+            test_hub.publish({"type": "log", "level": "warning", "message": "live monitor event"})
+            live_event = websocket.receive_json()
+            assert live_event["message"] == "live monitor event"

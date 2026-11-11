@@ -57,8 +57,8 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
         events = None
         try:
             monitor_logger.info("Monitor WebSocket connected (client=%s)", client_host)
-            events = monitor.subscribe()
-            for event in monitor.history():
+            events = monitor.hub.subscribe()
+            for event in monitor.hub.history():
                 await websocket.send_json(event)
             while True:
                 try:
@@ -76,7 +76,7 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
             monitor_logger.exception("Monitor WebSocket failed while delivering events")
         finally:
             if events is not None:
-                monitor.unsubscribe(events)
+                monitor.hub.unsubscribe(events)
 
     @router.post("/api/monitor/shutdown")
     async def shutdown_monitor(request: Request):

@@ -101,3 +101,17 @@ class MonitorLogHandler(logging.Handler):
             })
         except Exception:
             self.handleError(record)
+
+
+def install_monitor_log_handler(studio_logger=None):
+    root_logger = logging.getLogger()
+    handler = next(
+        (item for item in root_logger.handlers if isinstance(item, MonitorLogHandler)),
+        None
+    )
+    if handler is None:
+        handler = MonitorLogHandler()
+        root_logger.addHandler(handler)
+    if studio_logger is not None and handler not in studio_logger.handlers:
+        studio_logger.addHandler(handler)
+    return handler

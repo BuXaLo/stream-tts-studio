@@ -4,7 +4,6 @@ import os
 import sys
 import ctypes
 import asyncio
-import subprocess
 import time
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -243,32 +242,20 @@ if __name__ == "__main__":
     browser_host = "127.0.0.1" if host == "0.0.0.0" else ("[{}]".format(host) if ":" in host and not host.startswith("[") else host)
     base_url = f"http://{browser_host}:{port}"
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info", timeout_graceful_shutdown=300))
+    server.config.load()
+    for logger_name in ("uvicorn", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        if monitor_log_handler not in uvicorn_logger.handlers:
+            uvicorn_logger.addHandler(monitor_log_handler)
     set_shutdown_callback(lambda: setattr(server, "should_exit", True))
 
-    def open_window_when_ready():
+    def open_dashboard_when_ready():
         deadline = time.time() + 180
         while not server.started and not server.should_exit and time.time() < deadline:
             time.sleep(0.25)
-        if not server.started:
-            return
-        if monitor_mode:
-            monitor_url = base_url + "/monitor"
-            edge_candidates = [
-                os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
-                os.path.join(os.environ.get("PROGRAMFILES", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
-                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
-            ]
-            edge_path = next((path for path in edge_candidates if path and os.path.isfile(path)), None)
-            if edge_path:
-                try:
-                    subprocess.Popen([edge_path, "--app=" + monitor_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    webbrowser.open(monitor_url)
-            else:
-                webbrowser.open(monitor_url)
-        elif cfg.get("auto_open_browser", True):
+        if server.started:
             webbrowser.open(base_url + "/dashboard")
 
-    if monitor_mode or cfg.get("auto_open_browser", True):
-        threading.Thread(target=open_window_when_ready, daemon=True).start()
+    if not monitor_mode and cfg.get("auto_open_browser", True):
+        threading.Thread(target=open_dashboard_when_ready, daemon=True).start()
     server.run()

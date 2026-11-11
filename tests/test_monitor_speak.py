@@ -1,10 +1,9 @@
 from types import SimpleNamespace
 
-from studio.core import monitor
 from studio.core.monitor import EventHub
 
 
-def test_speak_route_emits_monitor_events(tmp_path, monkeypatch):
+def test_speak_route_returns_wav_and_delegates_generation(tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from studio.routes.speak import create_speak_router
@@ -24,16 +23,11 @@ def test_speak_route_emits_monitor_events(tmp_path, monkeypatch):
     )
     app = FastAPI()
     app.include_router(router)
-    test_hub = EventHub()
-    monkeypatch.setattr(monitor, "hub", test_hub)
     with TestClient(app) as client:
         response = client.post("/speak", json={"text": "Hello"})
     assert response.status_code == 200
-    events = [item for item in test_hub.history() if item.get("type") == "generation"]
-    assert [item["status"] for item in events] == ["started", "complete"]
-    assert events[0]["text"] == "Hello"
-    assert events[1]["synthesis_seconds"] >= 0
-    assert events[1]["audio_duration"] == 1.25
+    assert response.content == b"RIFF-test"
+    assert response.headers["content-type"] == "audio/wav"
 
 
 def test_tts_engine_publishes_events_for_every_generation_caller(monkeypatch):

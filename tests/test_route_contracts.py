@@ -7,7 +7,7 @@ EXPECTED_ROUTES = {
     "GET /", "GET /api/active_overlay_config", "GET /api/da/auth_url",
     "GET /api/da/callback", "GET /api/da/config", "GET /api/fonts",
     "GET /api/presets", "GET /api/system_config", "GET /favicon.ico",
-    "GET /monitor", "GET /monitor/", "POST /api/monitor/shutdown",
+    "GET /monitor", "GET /monitor/", "GET /monitor/{asset_name}", "POST /api/monitor/shutdown",
     "GET /overlay", "GET /overlay/", "POST /api/characters/save",
     "POST /api/convert_to_telegram_ogg", "POST /api/da/config",
     "POST /api/da/test_donation", "POST /api/isolate_vocal",

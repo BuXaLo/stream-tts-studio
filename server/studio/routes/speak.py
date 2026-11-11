@@ -2,10 +2,7 @@
 import logging
 import math
 import os
-import time
-import uuid
 
-from studio.core.monitor import publish_generation
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -52,14 +49,9 @@ def create_speak_router(load_presets, get_active_character_id, characters_dir, g
             raise HTTPException(status_code=400, detail="Некорректное значение speed.")
         ref_text = char_data.get("reference_text", "")
     
-        request_id = uuid.uuid4().hex
-        started_at = time.perf_counter()
-        publish_generation("started", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id)
         try:
             log.info("SPEAK: персонаж %s (ID: %s), скорость %s", char_data.get("name", char_id), char_id, speed)
             wav_bytes, duration = generate_voice(raw_text, voice_path, ref_text, speed)
-            synthesis_seconds = time.perf_counter() - started_at
-            publish_generation("complete", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(synthesis_seconds, 3), audio_duration=duration)
     
             ws_manager.broadcast_sync({
                 "event": "mita_dialogue",
@@ -70,14 +62,11 @@ def create_speak_router(load_presets, get_active_character_id, characters_dir, g
     
             return Response(content=wav_bytes, media_type="audio/wav")
         except torch.cuda.OutOfMemoryError:
-            publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error="Недостаточно видеопамяти")
             logging.getLogger(__name__).exception("CUDA out of memory during /speak")
             raise HTTPException(status_code=503, detail="Недостаточно видеопамяти для генерации.")
         except HTTPException as exc:
-            publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error=str(exc.detail)[:500])
             raise
         except Exception as e:
-            publish_generation("error", request_id=request_id, text=raw_text, character=char_data.get("name", char_id), char_id=char_id, synthesis_seconds=round(time.perf_counter() - started_at, 3), error=str(e)[:500])
             logging.getLogger(__name__).exception("Ошибка генерации /speak")
             raise HTTPException(status_code=500, detail=str(e))
     

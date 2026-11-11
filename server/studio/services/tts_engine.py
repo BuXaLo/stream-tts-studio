@@ -2,11 +2,14 @@
 import gc
 import io
 import logging
+import os
+import uuid
 import re
 import time
 import wave
 
 from studio.services.text import sanitize_text
+from studio.core.monitor import publish_generation
 
 cosyvoice = generation_lock = load_config = logger = np = torch = None
 PROMPT_CACHE = {}
@@ -121,9 +124,29 @@ def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, spee
             return numpy_to_wav(final_audio, sr), duration
 
 def generate_voice(raw_text: str, voice_wav_path: str, ref_text: str, speed: float = 1.0) -> tuple[bytes, float]:
+    request_id = uuid.uuid4().hex
+    character_id = os.path.basename(os.path.dirname(voice_wav_path)) or "—"
+    started_at = time.perf_counter()
+    publish_generation(
+        "started", request_id=request_id, text=raw_text,
+        character=character_id, char_id=character_id
+    )
     try:
-        return _generate_voice_impl(raw_text, voice_wav_path, ref_text, speed)
-    except Exception:
+        wav_bytes, duration = _generate_voice_impl(raw_text, voice_wav_path, ref_text, speed)
+        publish_generation(
+            "complete", request_id=request_id, text=raw_text,
+            character=character_id, char_id=character_id,
+            synthesis_seconds=round(time.perf_counter() - started_at, 3),
+            audio_duration=duration
+        )
+        return wav_bytes, duration
+    except Exception as exc:
+        publish_generation(
+            "error", request_id=request_id, text=raw_text,
+            character=character_id, char_id=character_id,
+            synthesis_seconds=round(time.perf_counter() - started_at, 3),
+            error=str(exc)[:500]
+        )
         try:
             clear_vram()
         except Exception:

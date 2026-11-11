@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import os
 import sys
 import ctypes
@@ -49,12 +50,13 @@ if os.name == "nt":
         sys.exit(1)
 
 from studio.core.monitor import MonitorLogHandler, set_shutdown_callback
-logger.addHandler(MonitorLogHandler())
+monitor_log_handler = MonitorLogHandler()
+logger.addHandler(monitor_log_handler)
+logging.getLogger().addHandler(monitor_log_handler)
 
 import re
 import threading
 import webbrowser
-import logging
 import urllib.parse
 
 import numpy as np

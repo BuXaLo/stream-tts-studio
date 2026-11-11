@@ -34,3 +34,47 @@ def test_speak_route_emits_monitor_events(tmp_path, monkeypatch):
     assert events[0]["text"] == "Hello"
     assert events[1]["synthesis_seconds"] >= 0
     assert events[1]["audio_duration"] == 1.25
+
+
+def test_tts_engine_publishes_events_for_every_generation_caller(monkeypatch):
+    from studio.core import monitor
+    from studio.services import tts_engine
+
+    test_hub = EventHub()
+    monkeypatch.setattr(monitor, "hub", test_hub)
+    monkeypatch.setattr(tts_engine, "_generate_voice_impl", lambda *args: (b"wav", 2.5))
+
+    result = tts_engine.generate_voice("Hello from dashboard", "characters/hero/voice.wav", "ref", 1.0)
+
+    assert result == (b"wav", 2.5)
+    events = [item for item in test_hub.history() if item.get("type") == "generation"]
+    assert [item["status"] for item in events] == ["started", "complete"]
+    assert events[0]["text"] == "Hello from dashboard"
+    assert events[0]["char_id"] == "hero"
+    assert events[1]["audio_duration"] == 2.5
+    assert events[1]["synthesis_seconds"] >= 0
+
+
+def test_tts_engine_publishes_failed_generation(monkeypatch):
+    from studio.core import monitor
+    from studio.services import tts_engine
+
+    test_hub = EventHub()
+    monkeypatch.setattr(monitor, "hub", test_hub)
+
+    def fail(*args):
+        raise RuntimeError("synthetic generation failure")
+
+    monkeypatch.setattr(tts_engine, "_generate_voice_impl", fail)
+    monkeypatch.setattr(tts_engine, "clear_vram", lambda: None)
+
+    try:
+        tts_engine.generate_voice("Hello", "characters/hero/voice.wav", "ref", 1.0)
+    except RuntimeError as exc:
+        assert str(exc) == "synthetic generation failure"
+    else:
+        raise AssertionError("generation failure was not propagated")
+
+    events = [item for item in test_hub.history() if item.get("type") == "generation"]
+    assert [item["status"] for item in events] == ["started", "error"]
+    assert events[-1]["error"] == "synthetic generation failure"

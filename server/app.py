@@ -29,7 +29,7 @@ import websockets
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 from studio.services.donations import parse_donation
-from studio.core.validation import same_origin
+from studio.core.validation import is_valid_bind_host, same_origin
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -818,12 +818,8 @@ def require_character(char_id):
 
 def validate_host(value):
     host = str(value).strip()
-    if host.lower() == "localhost" or host == "0.0.0.0":
-        return host
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Некорректный host. Укажите localhost, 0.0.0.0 или IP-адрес.")
+    if not is_valid_bind_host(host):
+        raise HTTPException(status_code=400, detail="Некорректный host. Укажите IP-адрес или корректное DNS-имя.")
     return host
 
 def validate_streamerbot_url(value):
@@ -847,7 +843,7 @@ def api_save_system_config(data: dict):
                 port = int(data["port"])
             except (TypeError, ValueError, OverflowError):
                 raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
-            if isinstance(data["port"], bool) or not 1024 <= port <= 65535:
+            if isinstance(data["port"], bool) or not 1 <= port <= 65535:
                 raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1024 до 65535.")
             cfg["port"] = port
         if "n_timesteps" in data:
@@ -897,7 +893,9 @@ def api_save_da_config(data: dict):
                     raise HTTPException(status_code=400, detail="JSON action должен быть объектом.")
             da_cfg["streamerbot_action"] = action
         save_da_config(da_cfg)
-    return {"status": "ok", "config": da_cfg}
+    public_config = dict(da_cfg)
+    public_config["client_secret"] = ""
+    return {"status": "ok", "config": public_config, "client_secret_set": bool(da_cfg.get("client_secret"))}
 
 DA_OAUTH_STATES = {}
 
@@ -952,9 +950,11 @@ def api_da_callback(code: Optional[str] = None, error: Optional[str] = None, sta
             return HTMLResponse(f"<h3>Ошибка получения токена ({resp.status_code}): {html.escape(resp.text[:1000])}</h3>")
 
         tokens = resp.json()
-        save_da_tokens(tokens)
+        with get_file_lock(DA_TOKENS_FILE):
+            save_da_tokens(tokens)
         da_cfg["enabled"] = True
-        save_da_config(da_cfg)
+        with get_file_lock(DA_CONFIG_FILE):
+            save_da_config(da_cfg)
 
         return HTMLResponse("""
             <html>
@@ -1094,7 +1094,7 @@ def api_trim_and_transcribe(
     whisper_model = None
     device = "cpu"
     try:
-        if start < 0 or end < 0 or (end > 0 and end <= start):
+        if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < 0 or (end > 0 and end <= start):
             raise HTTPException(status_code=400, detail="Некорректный диапазон обрезки аудио.")
 
         with open(temp_in, "wb") as stream:
@@ -1157,7 +1157,7 @@ def api_normalize_audio(
     audio: UploadFile = File(...),
     target_gain: float = Form(0.95)
 ):
-    if not 0.1 <= target_gain <= 1.0:
+    if not math.isfinite(target_gain) or not 0.1 <= target_gain <= 1.0:
         raise HTTPException(status_code=400, detail="target_gain должен быть в диапазоне 0.1–1.0.")
     try:
         in_bio = io.BytesIO(audio.file.read())
@@ -1509,7 +1509,13 @@ def api_speak(request: SpeakRequest):
         raise HTTPException(status_code=404, detail=f"Файл voice.wav для '{char_id}' не найден.")
 
     try:
-        speed = max(0.5, min(2.0, float(request.speed))) if request.speed is not None else char_data.get("speed", 1.0)
+        if request.speed is not None:
+            requested_speed = float(request.speed)
+            if not math.isfinite(requested_speed):
+                raise ValueError("speed must be finite")
+            speed = max(0.5, min(2.0, requested_speed))
+        else:
+            speed = char_data.get("speed", 1.0)
     except (TypeError, ValueError, OverflowError):
         raise HTTPException(status_code=400, detail="Некорректное значение speed.")
     ref_text = char_data.get("reference_text", "")

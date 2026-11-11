@@ -2,6 +2,7 @@
 import os
 import sys
 import ipaddress
+import math
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
@@ -25,6 +26,7 @@ import requests
 import websockets
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
+from studio.services.donations import parse_donation
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -184,6 +186,10 @@ DA_SUBSCRIBE_API_URL = "https://www.donationalerts.com/api/v1/centrifuge/subscri
 DA_CENTRIFUGO_WS_URL = "wss://centrifugo.donationalerts.com/connection/websocket"
 DA_SCOPES = "oauth-donation-subscribe oauth-user-show"
 
+_failed_donations_lock = threading.Lock()
+FAILED_DONATIONS_FILE = os.path.join(LOG_DIR, "streamerbot_failed_donations.jsonl")
+
+
 class DonationAlertsWorker:
     def __init__(self):
         self.task: Optional[asyncio.Task] = None
@@ -206,170 +212,293 @@ class DonationAlertsWorker:
         }
         try:
             resp = requests.post(DA_TOKEN_URL, data=payload, timeout=10)
-            if resp.status_code == 200:
-                tokens = resp.json()
-                with get_file_lock(DA_TOKENS_FILE):
-                    save_da_tokens(tokens)
-                return tokens
+            if resp.status_code != 200:
+                logging.getLogger(__name__).warning(
+                    "DonationAlerts token refresh failed: HTTP %s (%s)",
+                    resp.status_code, resp.text[:300]
+                )
+                return None
+            tokens = resp.json()
+            with get_file_lock(DA_TOKENS_FILE):
+                save_da_tokens(tokens)
+            return tokens
         except Exception:
-            pass
-        return None
+            logging.getLogger(__name__).exception("DonationAlerts token refresh request failed")
+            return None
 
-    def get_access_token(self) -> Optional[str]:
+    def get_access_token(self):
         tokens = load_da_tokens()
         da_cfg = load_da_config()
         if not tokens or not da_cfg.get("client_id") or not da_cfg.get("client_secret"):
+            self.last_error = "Требуется авторизация OAuth"
             return None
 
-        headers = {"Authorization": f"Bearer {tokens.get('access_token')}"}
+        def fetch_profile(access_token):
+            response = requests.get(
+                DA_USER_API_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=8
+            )
+            if response.status_code == 200:
+                profile = response.json().get("data")
+                if isinstance(profile, dict):
+                    return profile
+            return response
+
         try:
-            resp = requests.get(DA_USER_API_URL, headers=headers, timeout=8)
-            if resp.status_code == 200:
-                profile = resp.json().get("data", {})
-                self.authorized_user = profile.get("name", "")
-                return tokens.get("access_token")
+            access_token = tokens.get("access_token")
+            profile = fetch_profile(access_token)
+            if isinstance(profile, requests.Response) and profile.status_code == 401 and tokens.get("refresh_token"):
+                refreshed = self.refresh_tokens(
+                    tokens["refresh_token"], da_cfg["client_id"], da_cfg["client_secret"]
+                )
+                if not refreshed:
+                    self.last_error = "OAuth-токен DonationAlerts истёк. Требуется повторная авторизация."
+                    return None
+                access_token = refreshed.get("access_token")
+                profile = fetch_profile(access_token)
 
-            if resp.status_code == 401 and "refresh_token" in tokens:
-                refreshed = self.refresh_tokens(tokens["refresh_token"], da_cfg["client_id"], da_cfg["client_secret"])
-                if refreshed:
-                    return refreshed.get("access_token")
-        except Exception as e:
-            self.last_error = str(e)
-        return None
+            if isinstance(profile, requests.Response):
+                self.last_error = f"DonationAlerts временно недоступен (HTTP {profile.status_code})."
+                return None
 
-    def send_to_streamerbot(self, donor: str, amount: float, currency: str, message: str):
-        da_cfg = load_da_config()
-        sb_url = da_cfg.get("streamerbot_url", "http://127.0.0.1:7474/DoAction")
-        sb_action = da_cfg.get("streamerbot_action", "Donation").strip()
+            if not profile.get("id") or not profile.get("socket_connection_token"):
+                self.last_error = "DonationAlerts вернул неполный профиль пользователя."
+                return None
 
-        payload = {
-            "action": {"name": sb_action} if not sb_action.startswith("{") else json.loads(sb_action),
-            "args": {
-                "user": str(donor),
-                "donorName": str(donor),
-                "amount": float(amount),
-                "currency": str(currency),
-                "message": str(message),
-                "rawInput": str(message)
-            }
+            self.authorized_user = str(profile.get("name") or "")
+            return access_token, profile
+        except requests.exceptions.RequestException as exc:
+            self.last_error = f"DonationAlerts временно недоступен: {exc}"
+            return None
+        except Exception as exc:
+            self.last_error = f"Ошибка ответа DonationAlerts: {exc}"
+            return None
+
+    def _journal_failed_donation(self, donor, amount, currency, message, reason, status_code, attempts):
+        record = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "donor": str(donor),
+            "amount": amount,
+            "currency": str(currency),
+            "message": str(message),
+            "reason": str(reason),
+            "status_code": status_code,
+            "attempts": attempts
         }
         try:
-            r = requests.post(sb_url, json=payload, timeout=4)
-            print(f"[DA Listener -> Streamer.bot] {donor}: {amount} {currency} | Ответ SB: {r.status_code}")
-        except Exception as e:
-            print(f"[DA Listener] Ошибка передачи в Streamer.bot ({sb_url}): {e}")
+            with _failed_donations_lock:
+                os.makedirs(LOG_DIR, exist_ok=True)
+                with open(FAILED_DONATIONS_FILE, "a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:
+            logging.getLogger(__name__).exception("Не удалось записать журнал неотправленного доната")
+
+    def send_to_streamerbot(self, donor: str, amount: float, currency: str, message: str):
+        result = {"success": False, "status_code": None, "error": "", "attempts": 0}
+        try:
+            da_cfg = load_da_config()
+            sb_url = da_cfg.get("streamerbot_url", "http://127.0.0.1:7474/DoAction")
+            sb_action = da_cfg.get("streamerbot_action", "Donation").strip()
+            action = {"name": sb_action} if not sb_action.startswith("{") else json.loads(sb_action)
+            if not isinstance(action, dict):
+                raise ValueError("Streamer.bot action должен быть объектом")
+
+            payload = {
+                "action": action,
+                "args": {
+                    "user": str(donor),
+                    "donorName": str(donor),
+                    "amount": float(amount),
+                    "currency": str(currency),
+                    "message": str(message),
+                    "rawInput": str(message)
+                }
+            }
+
+            for attempt in range(2):
+                result["attempts"] += 1
+                try:
+                    response = requests.post(sb_url, json=payload, timeout=(3, 4))
+                except requests.exceptions.Timeout as exc:
+                    result["error"] = f"Таймаут Streamer.bot: {exc}"
+                    break
+                except requests.exceptions.ConnectionError as exc:
+                    result["error"] = f"Ошибка соединения со Streamer.bot: {exc}"
+                    if attempt == 0:
+                        continue
+                    break
+
+                result["status_code"] = response.status_code
+                if 200 <= response.status_code < 300:
+                    result["success"] = True
+                    logging.getLogger(__name__).info(
+                        "Donation sent to Streamer.bot: %s, HTTP %s, attempts=%s",
+                        donor, response.status_code, result["attempts"]
+                    )
+                    return result
+
+                body = (response.text or "")[:300]
+                result["error"] = f"HTTP {response.status_code}: {body}"
+                logging.getLogger(__name__).error(
+                    "Streamer.bot rejected donation: HTTP %s; body=%s",
+                    response.status_code, body
+                )
+                break
+        except Exception as exc:
+            result["error"] = str(exc)
+            logging.getLogger(__name__).exception("Failed to prepare/send donation to Streamer.bot")
+
+        self._journal_failed_donation(
+            donor, amount, currency, message, result["error"],
+            result["status_code"], result["attempts"]
+        )
+        return result
 
     async def run_loop(self):
+        reconnect_delays = (5, 10, 30, 60)
+        reconnect_index = 0
+
         while True:
-            da_cfg = load_da_config()
+            da_cfg = await asyncio.to_thread(load_da_config)
             if not da_cfg.get("enabled", False):
                 self.is_connected = False
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
                 continue
 
-            access_token = self.get_access_token()
-            if not access_token:
+            auth_result = await asyncio.to_thread(self.get_access_token)
+            if not auth_result:
                 self.is_connected = False
-                self.last_error = "Требуется авторизация OAuth"
-                await asyncio.sleep(5)
+                self.last_error = self.last_error or "DonationAlerts временно недоступен."
+                delay = reconnect_delays[reconnect_index]
+                reconnect_index = min(reconnect_index + 1, len(reconnect_delays) - 1)
+                logging.getLogger(__name__).warning(
+                    "DonationAlerts connection unavailable; retry in %ss: %s", delay, self.last_error
+                )
+                await asyncio.sleep(delay)
                 continue
 
+            access_token, profile = auth_result
             try:
-                headers = {"Authorization": f"Bearer {access_token}"}
-                profile_resp = requests.get(DA_USER_API_URL, headers=headers, timeout=10)
-                if profile_resp.status_code != 200:
-                    raise RuntimeError("Не удалось получить профиль пользователя DA")
-
-                profile = profile_resp.json()["data"]
                 user_id = profile["id"]
-                self.authorized_user = profile.get("name", "")
-                socket_token = profile.get("socket_connection_token")
+                socket_token = profile["socket_connection_token"]
                 channel = f"$alerts:donation_{user_id}"
 
-                async with websockets.connect(DA_CENTRIFUGO_WS_URL, ping_interval=20, ping_timeout=10) as ws:
+                async with websockets.connect(
+                    DA_CENTRIFUGO_WS_URL, ping_interval=20, ping_timeout=10
+                ) as ws:
                     await ws.send(json.dumps({"params": {"token": socket_token}, "id": 1}))
                     connect_res = json.loads(await ws.recv())
                     client_id = connect_res.get("result", {}).get("client")
                     if not client_id:
                         raise RuntimeError(f"Ошибка авторизации Centrifugo: {connect_res}")
 
-                    sub_token_resp = requests.post(
+                    sub_response = await asyncio.to_thread(
+                        requests.post,
                         DA_SUBSCRIBE_API_URL,
-                        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                        headers={
+                            "Authorization": f"Bearer {access_token}",
+                            "Content-Type": "application/json"
+                        },
                         json={"channels": [channel], "client": client_id},
                         timeout=10
                     )
-                    sub_token = None
-                    for ch in sub_token_resp.json().get("channels", []):
-                        if ch.get("channel") == channel:
-                            sub_token = ch.get("token")
-                            break
-
+                    sub_response.raise_for_status()
+                    sub_data = sub_response.json()
+                    sub_token = next(
+                        (item.get("token") for item in sub_data.get("channels", [])
+                         if item.get("channel") == channel),
+                        None
+                    )
                     if not sub_token:
                         raise RuntimeError("Не удалось получить токен подписки на канал алертов")
 
-                    await ws.send(json.dumps({"params": {"channel": channel, "token": sub_token}, "method": 1, "id": 2}))
+                    await ws.send(json.dumps({
+                        "params": {"channel": channel, "token": sub_token},
+                        "method": 1,
+                        "id": 2
+                    }))
                     sub_res = json.loads(await ws.recv())
                     if "error" in sub_res:
                         raise RuntimeError(f"Ошибка подписки: {sub_res['error']}")
 
                     self.is_connected = True
                     self.last_error = ""
-                    print(f"[DA Listener] Подключено к DA Centrifugo (Аккаунт: {self.authorized_user})")
+                    reconnect_index = 0
+                    logging.getLogger(__name__).info(
+                        "Подключено к DA Centrifugo (аккаунт: %s)", self.authorized_user
+                    )
 
-                    try:
-                        while True:
-                            da_cfg_current = load_da_config()
-                            if not da_cfg_current.get("enabled", False):
-                                break
+                    while True:
+                        current_cfg = await asyncio.to_thread(load_da_config)
+                        if not current_cfg.get("enabled", False):
+                            break
 
-                            raw_msg = await ws.recv()
-                            if not raw_msg or not raw_msg.strip():
+                        try:
+                            raw_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                        except asyncio.TimeoutError:
+                            continue
+
+                        if not raw_msg or not raw_msg.strip():
+                            continue
+
+                        for line in raw_msg.strip().split("\n"):
+                            line = line.strip()
+                            if not line or line == "{}":
+                                continue
+                            try:
+                                data = json.loads(line)
+                            except (TypeError, ValueError):
+                                logging.getLogger(__name__).warning("Пропущено некорректное JSON-событие DonationAlerts")
                                 continue
 
-                            for line in raw_msg.strip().split("\n"):
-                                line = line.strip()
-                                if not line or line == "{}":
-                                    continue
+                            payload_data = None
+                            if isinstance(data, dict):
+                                result_data = data.get("result", {}).get("data", {})
+                                push_data = data.get("push", {}).get("pub", {})
+                                if isinstance(result_data, dict):
+                                    payload_data = result_data.get("data")
+                                if payload_data is None and isinstance(push_data, dict):
+                                    payload_data = push_data.get("data")
 
-                                try:
-                                    data = json.loads(line)
-                                except Exception:
-                                    continue
+                            donation = parse_donation(payload_data)
+                            if donation is None:
+                                if payload_data is not None:
+                                    logging.getLogger(__name__).warning(
+                                        "Пропущено некорректное событие доната DonationAlerts"
+                                    )
+                                continue
 
-                                payload_data = None
-                                if "result" in data and "data" in data["result"]:
-                                    payload_data = data["result"]["data"].get("data")
-                                elif "push" in data and "pub" in data["push"]:
-                                    payload_data = data["push"]["pub"].get("data")
+                            logging.getLogger(__name__).info(
+                                "Получен донат: %s, %s %s", donation["donor"],
+                                donation["amount"], donation["currency"]
+                            )
+                            result = await asyncio.to_thread(
+                                self.send_to_streamerbot,
+                                donation["donor"], donation["amount"],
+                                donation["currency"], donation["message"]
+                            )
+                            if not result["success"]:
+                                logging.getLogger(__name__).error(
+                                    "Донат не передан в Streamer.bot: %s", result["error"]
+                                )
 
-                                if payload_data:
-                                    if isinstance(payload_data, str):
-                                        try:
-                                            payload_data = json.loads(payload_data)
-                                        except Exception:
-                                            pass
-
-                                    donor = payload_data.get("username") or payload_data.get("user") or "Добрый человек"
-                                    amount = payload_data.get("amount") or payload_data.get("sum") or 0
-                                    currency = payload_data.get("currency") or "RUB"
-                                    message = payload_data.get("message") or payload_data.get("comment") or ""
-
-                                    print(f"\n[DA Донат] {donor}: {amount} {currency} | Текст: {message}")
-                                    self.send_to_streamerbot(donor, amount, currency, message)
-
-                    except asyncio.CancelledError:
-                        raise
-
-            except Exception as e:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 self.is_connected = False
-                self.last_error = str(e)
-                print(f"[DA Listener] Переподключение к сокету через 5с... (Причина: {e})")
-                await asyncio.sleep(5)
+                self.last_error = str(exc)
+                delay = reconnect_delays[reconnect_index]
+                reconnect_index = min(reconnect_index + 1, len(reconnect_delays) - 1)
+                logging.getLogger(__name__).exception(
+                    "DonationAlerts reconnect in %ss", delay
+                )
+                await asyncio.sleep(delay)
 
     def start(self):
         if not self.task or self.task.done():
             self.task = asyncio.create_task(self.run_loop())
+
 
 da_worker = DonationAlertsWorker()
 
@@ -800,13 +929,31 @@ def api_da_callback(code: Optional[str] = None, error: Optional[str] = None):
 
 @app.post("/api/da/test_donation")
 def api_test_da_donation(data: dict):
-    donor = str(data.get("user", "Тестовый Донатер"))
-    amount = float(data.get("amount", 250))
-    currency = str(data.get("currency", "RUB"))
-    message = str(data.get("message", "Это тестовый донат из панели управления студии!"))
+    donation = parse_donation(data)
+    if donation is None:
+        raise HTTPException(status_code=400, detail="Некорректные данные тестового доната.")
 
-    da_worker.send_to_streamerbot(donor, amount, currency, message)
-    return {"status": "ok", "sent": {"donor": donor, "amount": amount, "currency": currency, "message": message}}
+    result = da_worker.send_to_streamerbot(
+        donation["donor"], donation["amount"],
+        donation["currency"], donation["message"]
+    )
+    if not result["success"]:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Streamer.bot не принял тестовый донат.",
+                "status_code": result["status_code"],
+                "error": result["error"]
+            }
+        )
+    return {
+        "status": "ok",
+        "result": result,
+        "sent": {
+            "donor": donation["donor"], "amount": donation["amount"],
+            "currency": donation["currency"], "message": donation["message"]
+        }
+    }
 
 # ==================== ОСТАЛЬНЫЕ МАРШРУТЫ СТУДИИ ====================
 @app.get("/api/presets")

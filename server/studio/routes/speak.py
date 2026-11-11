@@ -4,7 +4,6 @@ import math
 import os
 from typing import Optional
 
-import torch
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -16,9 +15,10 @@ class SpeakRequest(BaseModel):
     speed: Optional[float] = None
 
 
-def create_speak_router(load_presets, get_active_character_id, characters_dir, generate_voice, ws_manager, has_speakable_content, sanitize_overlay_text, logger=None):
+def create_speak_router(load_presets, get_active_character_id, characters_dir, generate_voice, ws_manager, has_speakable_content, sanitize_overlay_text, torch_module, logger=None):
     router = APIRouter()
     log = logger or logging.getLogger(__name__)
+    torch = torch_module
 
     @router.post("/speak")
     def api_speak(request: SpeakRequest):

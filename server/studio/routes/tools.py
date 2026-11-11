@@ -10,21 +10,21 @@ import subprocess
 import time
 from typing import Optional
 
-import numpy as np
-import soundfile as sf
-import torch
-import torchaudio
-from faster_whisper import WhisperModel
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 
-def create_tools_router(temp_dir, whisper_path, ffmpeg_path, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, characters_dir, get_active_character_id, logger=None):
+def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, soundfile_module, torch_module, torchaudio_module, whisper_model_cls, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, characters_dir, get_active_character_id, logger=None):
     router = APIRouter()
     log = logger or logging.getLogger(__name__)
     TEMP_DIR = temp_dir
     WHISPER_PATH = whisper_path
     FFMPEG_PATH = ffmpeg_path
+    np = numpy_module
+    sf = soundfile_module
+    torch = torch_module
+    torchaudio = torchaudio_module
+    WhisperModel = whisper_model_cls
 
     @router.post("/api/trim_and_transcribe")
     def api_trim_and_transcribe(

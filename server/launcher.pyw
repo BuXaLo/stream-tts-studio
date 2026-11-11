@@ -67,6 +67,7 @@ class LauncherController:
             child_env["STUDIO_MONITOR_MODE"] = "1"
             child_env["STUDIO_MONITOR_ORIGIN"] = "http://127.0.0.1:{}".format(self.monitor_port)
             child_env["PYTHONUNBUFFERED"] = "1"
+            child_env["PYTHONIOENCODING"] = "utf-8"
             self.child = subprocess.Popen(
                 [PYTHON_EXE, "-u", APP_FILE], cwd=BASE_DIR, env=child_env,
                 stdout=self.log_stream, stderr=subprocess.STDOUT,

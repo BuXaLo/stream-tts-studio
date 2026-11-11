@@ -49,6 +49,7 @@ def configure_environment(server_dir):
 
     logger = logging.getLogger("studio")
     logger.setLevel(logging.INFO)
+    logger.propagate = False
     if not logger.handlers:
         formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         file_handler = RotatingFileHandler(

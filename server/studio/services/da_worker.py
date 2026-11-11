@@ -268,8 +268,9 @@ class DonationAlertsWorker:
                                 continue
 
                             logging.getLogger(__name__).info(
-                                "Получен донат: %s, %s %s", donation["donor"],
-                                donation["amount"], donation["currency"]
+                                "Получен донат: %s, %s %s | Текст: %s",
+                                donation["donor"], donation["amount"],
+                                donation["currency"], donation["message"]
                             )
                             result = await asyncio.to_thread(
                                 self.send_to_streamerbot,

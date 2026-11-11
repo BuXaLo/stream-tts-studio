@@ -31,14 +31,14 @@ def test_refactor_preserves_all_http_and_websocket_route_paths():
 
 def test_dashboard_character_selection_handler_is_defined():
     source = Path("web/dashboard/app.js").read_text(encoding="utf-8")
-    assert re.search(r"async function selectCharacter\\s*\\(id\\)", source)
+    assert re.search(r"async function selectCharacter\s*\(id\)", source)
     assert "selectCharacter(id);" in source
 
 
 def test_dashboard_sidebar_sample_button_has_playback_handler():
     source = Path("web/dashboard/app.js").read_text(encoding="utf-8")
     sidebar = source.split("function renderSidebar() {", 1)[1].split(
-        "\\nfunction createNewCharacter()", 1
+        "\nfunction createNewCharacter()", 1
     )[0]
     assert "playButton.addEventListener('click'" in sidebar
     assert "sidebarAudioPlayer.play()" in sidebar

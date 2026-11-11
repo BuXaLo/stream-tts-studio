@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from studio.core.storage import get_file_lock
@@ -17,11 +17,16 @@ def make_client(tmp_path):
         state.update(value)
         saves.append(dict(value))
 
+    def validate_host(value):
+        if not isinstance(value, str):
+            raise HTTPException(status_code=400, detail="Host должен быть строкой.")
+        return value.strip()
+
     app = FastAPI()
     app.include_router(create_system_router(
         load_config, save_config, get_file_lock, str(tmp_path / "config.json"),
         type("WS", (), {"active_connections": []})(),
-        lambda value: value.strip() if isinstance(value, str) else (_ for _ in ()).throw(ValueError()),
+        validate_host,
         __import__("studio.core.validation", fromlist=["validate_port"]).validate_port,
     ))
     return TestClient(app), state, saves

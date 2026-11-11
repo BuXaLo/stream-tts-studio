@@ -1494,7 +1494,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const avatarInput = document.getElementById('avatar-file-input');
     if (avatarInput.files.length > 0) {
-      fd.append('avatar_file', avatarInput.files[0], 'avatar.png');
+      const avatarFile = avatarInput.files[0];
+      if (avatarFile.type !== 'image/png' && avatarFile.type !== 'image/jpeg') {
+        alert('Аватар должен быть файлом PNG или JPEG.');
+        return;
+      }
+      fd.append('avatar_file', avatarFile, 'avatar.png');
     }
 
     try {

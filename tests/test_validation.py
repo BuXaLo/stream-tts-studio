@@ -1,6 +1,6 @@
 import pytest
 
-from studio.core.validation import same_origin
+from studio.core.validation import is_valid_bind_host, same_origin, validate_port
 
 
 @pytest.mark.parametrize("origin,host,scheme", [
@@ -25,13 +25,32 @@ def test_same_origin_rejects_foreign_or_malformed_origins(origin, host, scheme):
     assert not same_origin(origin, host, scheme)
 
 
-import pytest
-from studio.core.validation import is_valid_bind_host
-
-@pytest.mark.parametrize("host", ["localhost", "0.0.0.0", "127.0.0.1", "::1", "[::1]", "studio.local", "my-pc.example.test"])
+@pytest.mark.parametrize("host", [
+    "localhost", "0.0.0.0", "127.0.0.1", "::1", "[::1]",
+    "studio.local", "my-pc.example.test"
+])
 def test_valid_bind_hosts(host):
     assert is_valid_bind_host(host)
 
-@pytest.mark.parametrize("host", ["", "not a host", "http://localhost", "localhost:8765", "evil/path", "-bad.example", "bad-.example", "a" * 254])
+
+@pytest.mark.parametrize("host", [
+    "", "not a host", "http://localhost", "localhost:8765",
+    "evil/path", "-bad.example", "bad-.example", "a" * 254, None, 123
+])
 def test_invalid_bind_hosts(host):
     assert not is_valid_bind_host(host)
+
+
+@pytest.mark.parametrize("value,expected", [
+    (1, 1), (8765, 8765), (65535, 65535), ("8765", 8765), (" 8765 ", 8765)
+])
+def test_validate_port_accepts_full_range(value, expected):
+    assert validate_port(value) == expected
+
+
+@pytest.mark.parametrize("value", [
+    0, -1, 65536, True, False, 8765.0, 8765.9, None, "8765.0", "", "port"
+])
+def test_validate_port_rejects_invalid_values(value):
+    with pytest.raises(ValueError):
+        validate_port(value)

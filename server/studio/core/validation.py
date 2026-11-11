@@ -1,6 +1,22 @@
-"""URL origin validation helpers."""
+"""Input validation helpers shared by API routes and tests."""
 import ipaddress
+import re
 from urllib.parse import urlsplit
+
+
+def validate_port(value):
+    """Accept integer ports (or digit-only strings) in the full TCP port range."""
+    if isinstance(value, bool):
+        raise ValueError("port must be an integer")
+    if isinstance(value, int):
+        port = value
+    elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value.strip()):
+        port = int(value.strip())
+    else:
+        raise ValueError("port must be an integer")
+    if not 1 <= port <= 65535:
+        raise ValueError("port out of range")
+    return port
 
 
 def _host_port(value, scheme):
@@ -34,7 +50,6 @@ def is_valid_bind_host(value):
     except ValueError:
         pass
     label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-    import re
     return re.fullmatch(label + r"(?:\." + label + r")*", host) is not None
 
 

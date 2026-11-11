@@ -33,6 +33,8 @@ from studio.core.ws import ConnectionManager, ws_manager
 from studio.services.donations import parse_donation
 from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
 from studio.core.validation import is_valid_bind_host, same_origin
+from studio.core.validation import validate_port
+from studio.services.streamerbot import send_donation_to_streamerbot
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -261,65 +263,11 @@ class DonationAlertsWorker:
             logging.getLogger(__name__).exception("Не удалось записать журнал неотправленного доната")
 
     def send_to_streamerbot(self, donor: str, amount: float, currency: str, message: str):
-        result = {"success": False, "status_code": None, "error": "", "attempts": 0}
-        try:
-            da_cfg = load_da_config()
-            sb_url = da_cfg.get("streamerbot_url", "http://127.0.0.1:7474/DoAction")
-            sb_action = da_cfg.get("streamerbot_action", "Donation").strip()
-            action = {"name": sb_action} if not sb_action.startswith("{") else json.loads(sb_action)
-            if not isinstance(action, dict):
-                raise ValueError("Streamer.bot action должен быть объектом")
-
-            payload = {
-                "action": action,
-                "args": {
-                    "user": str(donor),
-                    "donorName": str(donor),
-                    "amount": float(amount),
-                    "currency": str(currency),
-                    "message": str(message),
-                    "rawInput": str(message)
-                }
-            }
-
-            for attempt in range(2):
-                result["attempts"] += 1
-                try:
-                    response = requests.post(sb_url, json=payload, timeout=(3, 4))
-                except requests.exceptions.Timeout as exc:
-                    result["error"] = f"Таймаут Streamer.bot: {exc}"
-                    break
-                except requests.exceptions.ConnectionError as exc:
-                    result["error"] = f"Ошибка соединения со Streamer.bot: {exc}"
-                    if attempt == 0:
-                        continue
-                    break
-
-                result["status_code"] = response.status_code
-                if 200 <= response.status_code < 300:
-                    result["success"] = True
-                    logging.getLogger(__name__).info(
-                        "Donation sent to Streamer.bot: %s, HTTP %s, attempts=%s",
-                        donor, response.status_code, result["attempts"]
-                    )
-                    return result
-
-                body = (response.text or "")[:300]
-                result["error"] = f"HTTP {response.status_code}: {body}"
-                logging.getLogger(__name__).error(
-                    "Streamer.bot rejected donation: HTTP %s; body=%s",
-                    response.status_code, body
-                )
-                break
-        except Exception as exc:
-            result["error"] = str(exc)
-            logging.getLogger(__name__).exception("Failed to prepare/send donation to Streamer.bot")
-
-        self._journal_failed_donation(
-            donor, amount, currency, message, result["error"],
-            result["status_code"], result["attempts"]
+        return send_donation_to_streamerbot(
+            donor, amount, currency, message,
+            load_da_config=load_da_config,
+            journal_failed=self._journal_failed_donation,
         )
-        return result
 
     async def run_loop(self):
         reconnect_delays = (5, 10, 30, 60)
@@ -683,7 +631,9 @@ def require_character(char_id):
     return char_id
 
 def validate_host(value):
-    host = str(value).strip()
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="Host должен быть строкой.")
+    host = value.strip()
     if not is_valid_bind_host(host):
         raise HTTPException(status_code=400, detail="Некорректный host. Укажите IP-адрес или корректное DNS-имя.")
     return host
@@ -706,10 +656,8 @@ def api_save_system_config(data: dict):
             cfg["host"] = validate_host(data["host"])
         if "port" in data:
             try:
-                port = int(data["port"])
-            except (TypeError, ValueError, OverflowError):
-                raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1 до 65535.")
-            if isinstance(data["port"], bool) or not 1 <= port <= 65535:
+                port = validate_port(data["port"])
+            except ValueError:
                 raise HTTPException(status_code=400, detail="Порт должен быть целым числом от 1 до 65535.")
             cfg["port"] = port
         if "n_timesteps" in data:

@@ -375,7 +375,7 @@ class Win32TrayIcon:
             self.user32.PostMessageW(hwnd, self.WM_COMMAND, command, 0)
 
     def _open_monitor(self):
-        webbrowser.open(self.monitor_url, new=1)
+        webbrowser.open(self.monitor_url, new=2)
 
 
 def backend_address():

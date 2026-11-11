@@ -251,8 +251,8 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
     
         if voice_file:
             try:
-                raw_draft = await voice_file.read()
-                clean_draft = await asyncio.to_thread(convert_to_clean_wav, raw_draft)
+                raw_draft = voice_file.file.read()
+                clean_draft = convert_to_clean_wav(raw_draft)
             except RuntimeError as e:
                 log.warning("Draft audio conversion failed: %s", e)
                 raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")

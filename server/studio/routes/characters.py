@@ -74,8 +74,8 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         clean_wav = None
         if voice_file:
             try:
-                raw_voice = await voice_file.read()
-                clean_wav = await asyncio.to_thread(convert_to_clean_wav, raw_voice)
+                raw_voice = voice_file.file.read()
+                clean_wav = convert_to_clean_wav(raw_voice)
             except RuntimeError as exc:
                 log.warning("Character voice conversion failed: %s", exc)
                 raise HTTPException(status_code=400, detail="Не удалось обработать аудиофайл. Проверьте формат.")

@@ -12,7 +12,13 @@ Portable-окружение изолировано; приложение не д
 
 Рекомендуемый запуск — корневой `start_studio.bat`: он запускает `server\launcher.pyw` через portable `pythonw.exe`, создаёт обязательный системный трей, открывает монитор и запускает backend через portable `python.exe`. Если `python.exe` или `pythonw.exe` отсутствует, батник переключается на резервный `start_server.bat`. Прямой `start_server.bat` запускает `server\app.py` через portable `python.exe` с консольным выводом.
 
-Backend по умолчанию доступен на `http://127.0.0.1:8765`; Dashboard — `/dashboard`, Overlay — `/overlay`. Для OBS Browser Source использовать текущий URL и параметры, настроенные в рабочем профиле.
+Backend по умолчанию доступен на `http://127.0.0.1:8765`; Dashboard — `/dashboard`, Overlay — `/overlay`.
+### Автоматическое открытие Dashboard
+
+- При прямом запуске через `start_server.bat` Dashboard автоматически открывается после готовности backend, если в настройках включено «Открывать Dashboard при запуске» (`auto_open_browser`).
+- При запуске через `start_studio.bat` автоматически открывается Monitor. Dashboard не открывается автоматически независимо от значения `auto_open_browser`; его можно открыть через пункт «Открыть Dashboard» в меню системного трея.
+- Это намеренное разделение режимов: настройка `auto_open_browser` управляет обычным запуском backend без Launcher/Monitor.
+ Для OBS Browser Source использовать текущий URL и параметры, настроенные в рабочем профиле.
 
 ## 3. Данные, которые нужно сохранять
 

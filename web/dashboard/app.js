@@ -228,7 +228,11 @@ async function loadDonationAlertsConfig() {
 
     document.getElementById('da-cfg-enabled').checked = cfg.enabled === true;
     document.getElementById('da-cfg-client-id').value = cfg.client_id || '';
-    document.getElementById('da-cfg-client-secret').value = cfg.client_secret || '';
+    const secretInput = document.getElementById('da-cfg-client-secret');
+    secretInput.value = '';
+    secretInput.placeholder = data.client_secret_set
+      ? 'Секрет сохранён; пустое поле его не изменяет'
+      : 'Client Secret';
     document.getElementById('da-cfg-sb-url').value = cfg.streamerbot_url || 'http://127.0.0.1:7474/DoAction';
     document.getElementById('da-cfg-sb-action').value = cfg.streamerbot_action || 'Donation';
     document.getElementById('da-redirect-uri').value = data.redirect_uri || '';
@@ -492,36 +496,58 @@ async function loadPresetsList() {
 function renderSidebar() {
   const container = document.getElementById('character-list');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   Object.keys(currentPresets).forEach(id => {
     const item = currentPresets[id];
     const el = document.createElement('div');
-    el.className = `char-item ${id === activeCharId ? 'active-preset' : ''} ${id === selectedCharId ? 'selected' : ''}`;
+    el.classList.add('char-item');
+    if (id === activeCharId) el.classList.add('active-preset');
+    if (id === selectedCharId) el.classList.add('selected');
 
-    let avatarHtml = '';
-    if (item.has_avatar && item.avatar_url) {
-      avatarHtml = `<img src="${item.avatar_url}?_t=${Date.now()}" class="char-sidebar-avatar" alt="${item.name}">`;
+    const left = document.createElement('div');
+    left.className = 'char-item-left';
+
+    if (item.has_avatar && /^[a-z0-9_-]+$/.test(id)) {
+      const avatar = document.createElement('img');
+      avatar.className = 'char-sidebar-avatar';
+      avatar.alt = '';
+      avatar.src = `/char_files/${encodeURIComponent(id)}/avatar.png?_t=${Date.now()}`;
+      left.appendChild(avatar);
     } else {
-      avatarHtml = `<div class="char-sidebar-avatar-placeholder">👤</div>`;
+      const placeholder = document.createElement('div');
+      placeholder.className = 'char-sidebar-avatar-placeholder';
+      placeholder.textContent = '👤';
+      left.appendChild(placeholder);
     }
 
-    el.innerHTML = `
-      <div class="char-item-left">
-        ${avatarHtml}
-        <div class="char-item-info">
-          <span class="char-item-name">${item.name || id}</span>
-          <span class="char-badge">
-            <span class="active-dot"></span>
-            ${id === activeCharId ? 'Активен' : id}
-          </span>
-        </div>
-      </div>
-      <div class="char-actions-right">
-        <button class="btn-quick-play" title="Прослушать сэмпл голоса" data-char-id="${id}">▶</button>
-      </div>
-    `;
+    const info = document.createElement('div');
+    info.className = 'char-item-info';
 
+    const name = document.createElement('span');
+    name.className = 'char-item-name';
+    name.textContent = item.name || id;
+
+    const badge = document.createElement('span');
+    badge.className = 'char-badge';
+    const activeDot = document.createElement('span');
+    activeDot.className = 'active-dot';
+    badge.appendChild(activeDot);
+    badge.appendChild(document.createTextNode(id === activeCharId ? 'Активен' : id));
+
+    info.append(name, badge);
+    left.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'char-actions-right';
+    const playButton = document.createElement('button');
+    playButton.className = 'btn-quick-play';
+    playButton.title = 'Прослушать сэмпл голоса';
+    playButton.dataset.charId = id;
+    playButton.textContent = '▶';
+    actions.appendChild(playButton);
+
+    el.append(left, actions);
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-quick-play')) return;
       if (isDirty && selectedCharId !== id) {
@@ -530,33 +556,36 @@ function renderSidebar() {
       selectCharacter(id);
     });
 
-    const playBtn = el.querySelector('.btn-quick-play');
-    playBtn.addEventListener('click', (e) => {
+    playButton.addEventListener('click', (e) => {
       e.stopPropagation();
-      const rawVoicePath = `/char_files/${id}/voice.wav`;
-      
+      const rawVoicePath = `/char_files/${encodeURIComponent(id)}/voice.wav`;
+
       document.querySelectorAll('.btn-quick-play').forEach(btn => {
-        if (btn !== playBtn) btn.innerText = '▶';
+        if (btn !== playButton) btn.innerText = '▶';
       });
 
       if (sidebarAudioPlayer.dataset.charId === id && !sidebarAudioPlayer.paused) {
         sidebarAudioPlayer.pause();
-        playBtn.innerText = '▶';
+        playButton.innerText = '▶';
       } else if (sidebarAudioPlayer.dataset.charId === id && sidebarAudioPlayer.paused && sidebarAudioPlayer.src) {
-        sidebarAudioPlayer.play();
-        playBtn.innerText = '⏸';
+        sidebarAudioPlayer.play().catch(error => console.error('Ошибка воспроизведения сэмпла:', error));
+        playButton.innerText = '⏸';
       } else {
         sidebarAudioPlayer.dataset.charId = id;
         sidebarAudioPlayer.src = `${rawVoicePath}?_t=${Date.now()}`;
-        sidebarAudioPlayer.play();
-        playBtn.innerText = '⏸';
-        
+        sidebarAudioPlayer.play().catch(error => {
+          console.error('Ошибка воспроизведения сэмпла:', error);
+          playButton.innerText = '▶';
+          sidebarAudioPlayer.dataset.charId = '';
+        });
+        playButton.innerText = '⏸';
+
         sidebarAudioPlayer.onended = () => {
-          playBtn.innerText = '▶';
-          sidebarAudioPlayer.dataset.charId = "";
+          playButton.innerText = '▶';
+          sidebarAudioPlayer.dataset.charId = '';
         };
         sidebarAudioPlayer.onpause = () => {
-          playBtn.innerText = '▶';
+          playButton.innerText = '▶';
         };
       }
     });
@@ -834,7 +863,15 @@ function runDynamicOverlayPreview(fullText, durationSec = 3.5) {
   } else if (textAnim === 'word-fade') {
     cursor.style.display = 'none';
     const words = fullText.split(' ');
-    textTarget.innerHTML = words.map(w => `<span class="word-span">${w}</span>`).join(' ');
+    const fragment = document.createDocumentFragment();
+    words.forEach((word, index) => {
+      if (index) fragment.appendChild(document.createTextNode(' '));
+      const span = document.createElement('span');
+      span.className = 'word-span';
+      span.textContent = word;
+      fragment.appendChild(span);
+    });
+    textTarget.replaceChildren(fragment);
     const spans = textTarget.querySelectorAll('.word-span');
     const wordDelay = Math.max(40, speechMs / words.length);
 
@@ -845,9 +882,19 @@ function runDynamicOverlayPreview(fullText, durationSec = 3.5) {
     });
   } else if (textAnim === 'wavy-text') {
     cursor.style.display = 'none';
-    textTarget.innerHTML = fullText.split('').map((c, i) =>
-      c === ' ' ? ' ' : `<span class="wavy-char" style="animation-delay: ${(i * 0.08) % 1.4}s">${c}</span>`
-    ).join('');
+    const fragment = document.createDocumentFragment();
+    fullText.split('').forEach((character, index) => {
+      if (character === ' ') {
+        fragment.appendChild(document.createTextNode(' '));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'wavy-char';
+        span.style.animationDelay = `${(index * 0.08) % 1.4}s`;
+        span.textContent = character;
+        fragment.appendChild(span);
+      }
+    });
+    textTarget.replaceChildren(fragment);
   } else if (textAnim === 'glitch-decode') {
     cursor.style.display = 'none';
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
@@ -981,8 +1028,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           message: "Привет! Это проверка работы донатов через DonationAlerts и Streamer.bot."
         })
       });
-      if (!res.ok) throw new Error('Ошибка отправки тестового доната');
-      alert('Тестовое событие отправлено в Streamer.bot! Проверьте очередь экшенов.');
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = result.detail || {};
+        const message = typeof detail === 'string'
+          ? detail
+          : [detail.message, detail.error, detail.status_code ? 'HTTP ' + detail.status_code : '']
+              .filter(Boolean).join('\n');
+        throw new Error(message || 'Ошибка отправки тестового доната');
+      }
+      alert('Тестовый донат передан в Streamer.bot. Попыток: ' + (result.result?.attempts ?? 1) + '.');
     } catch (e) {
       alert(e.message);
     }
@@ -1112,10 +1167,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     stitcherFiles.forEach((f, idx) => {
       const item = document.createElement('div');
       item.className = 'stitcher-item';
-      item.innerHTML = `
-        <span class="stitcher-item-name">${idx + 1}. ${f.name}</span>
-        <button class="btn-remove-item" data-idx="${idx}">✖</button>
-      `;
+
+      const name = document.createElement('span');
+      name.className = 'stitcher-item-name';
+      name.textContent = `${idx + 1}. ${f.name}`;
+
+      const removeButton = document.createElement('button');
+      removeButton.className = 'btn-remove-item';
+      removeButton.dataset.idx = String(idx);
+      removeButton.textContent = '✖';
+
+      item.append(name, removeButton);
       list.appendChild(item);
     });
 
@@ -1432,7 +1494,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const avatarInput = document.getElementById('avatar-file-input');
     if (avatarInput.files.length > 0) {
-      fd.append('avatar_file', avatarInput.files[0], 'avatar.png');
+      const avatarFile = avatarInput.files[0];
+      if (avatarFile.type !== 'image/png' && avatarFile.type !== 'image/jpeg') {
+        alert('Аватар должен быть файлом PNG или JPEG.');
+        return;
+      }
+      fd.append('avatar_file', avatarFile, 'avatar.png');
     }
 
     try {

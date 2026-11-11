@@ -2,6 +2,8 @@
 import os
 import sys
 import ipaddress
+import secrets
+import html
 import math
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 if SERVER_DIR not in sys.path:
@@ -27,6 +29,7 @@ import websockets
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
 from studio.services.donations import parse_donation
+from studio.core.validation import same_origin
 
 # Подавляем назойливые DEBUG логи multipart и websockets в консоли
 logging.getLogger("multipart").setLevel(logging.WARNING)
@@ -64,6 +67,20 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(BUNDLED_FONTS_DIR, exist_ok=True)
 os.makedirs(CUSTOM_FONTS_DIR, exist_ok=True)
 os.makedirs(AUDIO_TOOLS_CACHE, exist_ok=True)
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger("studio")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    from logging.handlers import RotatingFileHandler
+    log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    file_handler = RotatingFileHandler(os.path.join(LOG_DIR, "studio.log"), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    file_handler.setFormatter(log_formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 os.environ["TEMP"] = TEMP_DIR
 os.environ["TMP"] = TEMP_DIR
@@ -82,34 +99,34 @@ import torch
 import torchaudio
 import soundfile as sf
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect
-from fastapi.responses import Response, FileResponse, HTMLResponse
+from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
 from cosyvoice.cli.cosyvoice import AutoModel
 
-print("=" * 60)
-print("  TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + Demucs + DA)")
+logger.info("=" * 60)
+logger.info("TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + Demucs + DA)")
 print("=" * 60)
 
 WHISPER_PATH = os.path.join(COSY_DIR, "pretrained_models", "faster-whisper-small")
 COSY_PATH = os.path.join(COSY_DIR, "pretrained_models", "Fun-CosyVoice3-0.5B")
 
-print("[1/1] Загрузка CosyVoice 3 в GPU...")
+logger.info("Загрузка CosyVoice 3 в GPU...")
 cosyvoice = AutoModel(model_dir=COSY_PATH)
 print("CosyVoice 3 успешно загружен!\n")
 
 generation_lock = threading.Lock()
 app = FastAPI(title="TTS & Overlay Studio")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.middleware("http")
+async def verify_request_origin(request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("origin")
+        host = request.headers.get("host", "")
+        if origin and not same_origin(origin, host, request.url.scheme):
+            return JSONResponse(status_code=403, content={"detail": "Origin не совпадает с адресом студии."})
+    return await call_next(request)
 
 PROMPT_CACHE = {}
 
@@ -533,6 +550,11 @@ def get_overlay_page():
 
 @app.websocket("/ws/overlay")
 async def websocket_overlay(websocket: WebSocket):
+    origin = websocket.headers.get("origin")
+    host = websocket.headers.get("host", "")
+    if origin and not same_origin(origin, host, websocket.url.scheme):
+        await websocket.close(code=1008)
+        return
     await ws_manager.connect(websocket)
     try:
         while True:
@@ -787,6 +809,13 @@ def api_get_system_config():
     }
 
 @app.post("/api/system_config")
+def require_character(char_id):
+    if not isinstance(char_id, str) or not re.fullmatch(r"[a-z0-9_-]+", char_id):
+        raise HTTPException(status_code=404, detail="Персонаж не найден.")
+    if char_id not in load_presets():
+        raise HTTPException(status_code=404, detail="Персонаж не найден.")
+    return char_id
+
 def validate_host(value):
     host = str(value).strip()
     if host.lower() == "localhost" or host == "0.0.0.0":
@@ -870,6 +899,8 @@ def api_save_da_config(data: dict):
         save_da_config(da_cfg)
     return {"status": "ok", "config": da_cfg}
 
+DA_OAUTH_STATES = {}
+
 @app.get("/api/da/auth_url")
 def api_get_da_auth_url():
     da_cfg = load_da_config()
@@ -878,18 +909,28 @@ def api_get_da_auth_url():
         raise HTTPException(status_code=400, detail="Сначала укажите ID приложения в настройках!")
 
     redirect_uri = da_worker.get_redirect_uri()
+    now = time.time()
+    for old_state, expires_at in list(DA_OAUTH_STATES.items()):
+        if expires_at <= now:
+            DA_OAUTH_STATES.pop(old_state, None)
+    state = secrets.token_urlsafe(32)
+    DA_OAUTH_STATES[state] = now + 600
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": DA_SCOPES
+        "scope": DA_SCOPES,
+        "state": state
     }
     return {"auth_url": f"{DA_AUTH_URL}?{urllib.parse.urlencode(params)}"}
 
 @app.get("/api/da/callback")
-def api_da_callback(code: Optional[str] = None, error: Optional[str] = None):
+def api_da_callback(code: Optional[str] = None, error: Optional[str] = None, state: Optional[str] = None):
+    expires_at = DA_OAUTH_STATES.pop(state, None) if state else None
+    if not expires_at or expires_at <= time.time():
+        return HTMLResponse("<h3>Ошибка авторизации DonationAlerts: недействительный или просроченный state.</h3>", status_code=400)
     if error:
-        return HTMLResponse(f"<h3>Ошибка авторизации DonationAlerts: {error}</h3><p>Можете закрыть это окно.</p>")
+        return HTMLResponse(f"<h3>Ошибка авторизации DonationAlerts: {html.escape(str(error))}</h3><p>Можете закрыть это окно.</p>")
     if not code:
         return HTMLResponse("<h3>Код авторизации не получен!</h3>")
 
@@ -908,7 +949,7 @@ def api_da_callback(code: Optional[str] = None, error: Optional[str] = None):
     try:
         resp = requests.post(DA_TOKEN_URL, data=payload, timeout=10)
         if resp.status_code != 200:
-            return HTMLResponse(f"<h3>Ошибка получения токена ({resp.status_code}): {resp.text}</h3>")
+            return HTMLResponse(f"<h3>Ошибка получения токена ({resp.status_code}): {html.escape(resp.text[:1000])}</h3>")
 
         tokens = resp.json()
         save_da_tokens(tokens)
@@ -925,7 +966,8 @@ def api_da_callback(code: Optional[str] = None, error: Optional[str] = None):
             </html>
         """)
     except Exception as e:
-        return HTMLResponse(f"<h3>Исключение: {str(e)}</h3>")
+        logger.exception("DonationAlerts OAuth callback failed")
+        return HTMLResponse(f"<h3>Исключение: {html.escape(str(e))}</h3>")
 
 @app.post("/api/da/test_donation")
 def api_test_da_donation(data: dict):
@@ -986,7 +1028,7 @@ def get_active_overlay_config(char_id: Optional[str] = None):
     char_data = presets.get(target_id, DEFAULT_PRESET)
     
     avatar_url = ""
-    if target_id:
+    if target_id and target_id in presets and re.fullmatch(r"[a-z0-9_-]+", target_id):
         avatar_path = os.path.join(CHARACTERS_DIR, target_id, "avatar.png")
         if os.path.exists(avatar_path):
             avatar_url = f"/char_files/{target_id}/avatar.png"
@@ -1305,6 +1347,7 @@ async def api_test_draft_tts(
             f.write(clean_draft)
         voice_path = temp_voice
     elif char_id:
+        require_character(char_id)
         existing_path = os.path.join(CHARACTERS_DIR, char_id, "voice.wav")
         if os.path.exists(existing_path):
             voice_path = existing_path

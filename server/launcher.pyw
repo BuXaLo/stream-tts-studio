@@ -156,6 +156,7 @@ def main():
         update_state(status="starting", backend_url=backend_url)
         child_env = os.environ.copy()
         child_env["STUDIO_MONITOR_MODE"] = "1"
+        child_env["STUDIO_MONITOR_ORIGIN"] = "http://127.0.0.1:{}".format(monitor_port)
         child_env["PYTHONUNBUFFERED"] = "1"
         child = subprocess.Popen(
             [PYTHON_EXE, "-u", APP_FILE],

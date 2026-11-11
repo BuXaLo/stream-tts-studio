@@ -50,7 +50,8 @@ def create_pages_router(dashboard_dir, overlay_dir, ws_manager, same_origin):
             return
         origin = websocket.headers.get("origin")
         host = websocket.headers.get("host", "")
-        if origin and not same_origin(origin, host, websocket.url.scheme):
+        launcher_origin = os.environ.get("STUDIO_MONITOR_ORIGIN")
+        if origin and not same_origin(origin, host, websocket.url.scheme) and origin != launcher_origin:
             await websocket.close(code=1008)
             return
         await websocket.accept()

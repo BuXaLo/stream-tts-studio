@@ -63,6 +63,7 @@ import torch
 import torchaudio
 import soundfile as sf
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
@@ -99,6 +100,14 @@ logger.info("CosyVoice 3 успешно загружен")
 
 generation_lock = threading.Lock()
 app = FastAPI(title="TTS & Overlay Studio")
+monitor_origin = os.environ.get("STUDIO_MONITOR_ORIGIN")
+if monitor_origin:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[monitor_origin],
+        allow_methods=["POST"],
+        allow_headers=[]
+    )
 
 @app.middleware("http")
 async def verify_request_origin(request, call_next):
@@ -106,7 +115,14 @@ async def verify_request_origin(request, call_next):
         origin = request.headers.get("origin")
         host = request.headers.get("host", "")
         if origin and not same_origin(origin, host, request.url.scheme):
-            return JSONResponse(status_code=403, content={"detail": "Origin не совпадает с адресом студии."})
+            local_launcher_shutdown = (
+                request.url.path == "/api/monitor/shutdown"
+                and origin == monitor_origin
+                and request.client is not None
+                and request.client.host in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+            )
+            if not local_launcher_shutdown:
+                return JSONResponse(status_code=403, content={"detail": "Origin не совпадает с адресом студии."})
     return await call_next(request)
 
 config_store = ConfigStore(SERVER_DIR)

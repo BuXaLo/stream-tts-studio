@@ -14,7 +14,7 @@ def test_monitor_launcher_tray_and_backend_lifecycle():
     assert "Shell_NotifyIconW" in source
     assert '"/launcher-start"' in source
     assert '"/open-dashboard"' in source
-    assert "webbrowser.open(monitor_url, new=1)" in source
+    assert "webbrowser.open(monitor_url, new=2)" in source
     assert "Открыть монитор" in source
     assert "Открыть Dashboard" in source
     assert "Выход" in source

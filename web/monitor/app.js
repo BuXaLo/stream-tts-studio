@@ -196,7 +196,6 @@ async function pollLauncher() {
 
         if (status.close_monitor) {
             window.close();
-            return;
         }
 
         if (status.status === "ready") {

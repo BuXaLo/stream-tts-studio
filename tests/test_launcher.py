@@ -22,4 +22,5 @@ def test_monitor_launcher_tray_and_backend_lifecycle():
     assert "STUDIO_MONITOR_ORIGIN" in source
     assert "TTS Studio — ошибка запуска" in source
     assert "CreateMutexW" in source
-    assert source.index("tray.start()") < source.index("controller.start_backend()")
+    main_start = source.index("def main():")
+    assert source.index("tray.start()", main_start) < source.index("controller.start_backend()", main_start)

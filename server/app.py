@@ -28,6 +28,7 @@ import requests
 import websockets
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
+from studio.core.config import ConfigStore
 from studio.core.ws import ConnectionManager, ws_manager
 from studio.services.donations import parse_donation
 from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
@@ -132,42 +133,13 @@ async def verify_request_origin(request, call_next):
 
 PROMPT_CACHE = {}
 
-DEFAULT_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 8765,
-    "n_timesteps": 6,
-    "auto_open_browser": True
-}
-
-def load_config() -> dict:
-    cfg = read_json(CONFIG_FILE, DEFAULT_CONFIG, strict=False)
-    return {**DEFAULT_CONFIG, **cfg} if isinstance(cfg, dict) else DEFAULT_CONFIG.copy()
-
-def save_config(cfg: dict):
-    write_json_atomic(CONFIG_FILE, cfg)
-
-# ==================== DONATIONALERTS ХРАНИЛИЩЕ ====================
-DEFAULT_DA_CONFIG = {
-    "enabled": False,
-    "client_id": "",
-    "client_secret": "",
-    "streamerbot_url": "http://127.0.0.1:7474/DoAction",
-    "streamerbot_action": "Donation"
-}
-
-def load_da_config() -> dict:
-    cfg = read_json(DA_CONFIG_FILE, DEFAULT_DA_CONFIG, strict=False)
-    return {**DEFAULT_DA_CONFIG, **cfg} if isinstance(cfg, dict) else DEFAULT_DA_CONFIG.copy()
-
-def save_da_config(cfg: dict):
-    write_json_atomic(DA_CONFIG_FILE, cfg)
-
-def load_da_tokens() -> Optional[dict]:
-    tokens = read_json(DA_TOKENS_FILE, None, strict=False)
-    return tokens if isinstance(tokens, dict) else None
-
-def save_da_tokens(tokens: dict):
-    write_json_atomic(DA_TOKENS_FILE, tokens)
+config_store = ConfigStore(SERVER_DIR)
+load_config = config_store.load_config
+save_config = config_store.save_config
+load_da_config = config_store.load_da_config
+save_da_config = config_store.save_da_config
+load_da_tokens = config_store.load_da_tokens
+save_da_tokens = config_store.save_da_tokens
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
 

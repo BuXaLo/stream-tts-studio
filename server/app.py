@@ -144,8 +144,6 @@ from studio.services.tts_engine import PROMPT_CACHE, clear_vram, configure_tts, 
 configure_tts(cosyvoice, generation_lock, load_config, logger)
 from studio.services.audio_tools import configure_audio_tools, convert_to_clean_wav
 configure_audio_tools(FFMPEG_PATH, TEMP_DIR)
-from studio.routes.system import create_system_router
-app.include_router(create_system_router(load_config, save_config, get_file_lock, CONFIG_FILE, ws_manager, validate_host, validate_port))
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
 
@@ -238,6 +236,9 @@ def validate_streamerbot_url(value):
     if parsed.scheme not in ("http", "https") or not parsed.hostname or not valid_port or parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="Некорректный URL Streamer.bot. Допустимы только http/https URL с адресом сервера.")
     return str(value).strip()
+
+from studio.routes.system import create_system_router
+app.include_router(create_system_router(load_config, save_config, get_file_lock, CONFIG_FILE, ws_manager, validate_host, validate_port))
 
 # ==================== DONATIONALERTS API ====================
 @app.get("/api/da/config")

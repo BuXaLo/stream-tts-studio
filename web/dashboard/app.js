@@ -228,7 +228,11 @@ async function loadDonationAlertsConfig() {
 
     document.getElementById('da-cfg-enabled').checked = cfg.enabled === true;
     document.getElementById('da-cfg-client-id').value = cfg.client_id || '';
-    document.getElementById('da-cfg-client-secret').value = cfg.client_secret || '';
+    const secretInput = document.getElementById('da-cfg-client-secret');
+    secretInput.value = '';
+    secretInput.placeholder = data.client_secret_set
+      ? 'Секрет сохранён; пустое поле его не изменяет'
+      : 'Client Secret';
     document.getElementById('da-cfg-sb-url').value = cfg.streamerbot_url || 'http://127.0.0.1:7474/DoAction';
     document.getElementById('da-cfg-sb-action').value = cfg.streamerbot_action || 'Donation';
     document.getElementById('da-redirect-uri').value = data.redirect_uri || '';
@@ -1000,8 +1004,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           message: "Привет! Это проверка работы донатов через DonationAlerts и Streamer.bot."
         })
       });
-      if (!res.ok) throw new Error('Ошибка отправки тестового доната');
-      alert('Тестовое событие отправлено в Streamer.bot! Проверьте очередь экшенов.');
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = result.detail || {};
+        const message = typeof detail === 'string'
+          ? detail
+          : [detail.message, detail.error, detail.status_code ? 'HTTP ' + detail.status_code : '']
+              .filter(Boolean).join('\n');
+        throw new Error(message || 'Ошибка отправки тестового доната');
+      }
+      alert('Тестовый донат передан в Streamer.bot. Попыток: ' + (result.result?.attempts ?? 1) + '.');
     } catch (e) {
       alert(e.message);
     }

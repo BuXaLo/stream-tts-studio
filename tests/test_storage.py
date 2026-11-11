@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from studio.core.storage import StorageError, read_json, write_json_atomic
+from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic
 
 
 def test_atomic_write_keeps_previous_valid_generation(tmp_path):
@@ -77,3 +77,19 @@ def test_missing_main_file_recovers_from_backup(tmp_path):
     path = tmp_path / "presets.json"
     (tmp_path / "presets.json.bak").write_text('{"recovered": true}', encoding="utf-8")
     assert read_json(path, {}, strict=True) == {"recovered": True}
+
+def test_file_lock_prevents_lost_updates(tmp_path):
+    path = tmp_path / "presets.json"
+    write_json_atomic(path, {"count": 0})
+    lock = get_file_lock(path)
+
+    def increment(_):
+        with lock:
+            data = read_json(path, {})
+            data["count"] += 1
+            write_json_atomic(path, data)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(increment, range(160)))
+
+    assert read_json(path, {})["count"] == 160

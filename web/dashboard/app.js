@@ -496,37 +496,58 @@ async function loadPresetsList() {
 function renderSidebar() {
   const container = document.getElementById('character-list');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   Object.keys(currentPresets).forEach(id => {
     const item = currentPresets[id];
     const el = document.createElement('div');
-    el.className = `char-item ${id === activeCharId ? 'active-preset' : ''} ${id === selectedCharId ? 'selected' : ''}`;
+    el.classList.add('char-item');
+    if (id === activeCharId) el.classList.add('active-preset');
+    if (id === selectedCharId) el.classList.add('selected');
 
-    let avatarHtml = '';
-    if (item.has_avatar && item.avatar_url) {
-      avatarHtml = `<img src="${item.avatar_url}?_t=${Date.now()}" class="char-sidebar-avatar" alt="">`;
+    const left = document.createElement('div');
+    left.className = 'char-item-left';
+
+    if (item.has_avatar && /^[a-z0-9_-]+$/.test(id)) {
+      const avatar = document.createElement('img');
+      avatar.className = 'char-sidebar-avatar';
+      avatar.alt = '';
+      avatar.src = `/char_files/${encodeURIComponent(id)}/avatar.png?_t=${Date.now()}`;
+      left.appendChild(avatar);
     } else {
-      avatarHtml = `<div class="char-sidebar-avatar-placeholder">👤</div>`;
+      const placeholder = document.createElement('div');
+      placeholder.className = 'char-sidebar-avatar-placeholder';
+      placeholder.textContent = '👤';
+      left.appendChild(placeholder);
     }
 
-    el.innerHTML = `
-      <div class="char-item-left">
-        ${avatarHtml}
-        <div class="char-item-info">
-          <span class="char-item-name"></span>
-          <span class="char-badge">
-            <span class="active-dot"></span>
-            ${id === activeCharId ? 'Активен' : id}
-          </span>
-        </div>
-      </div>
-      <div class="char-actions-right">
-        <button class="btn-quick-play" title="Прослушать сэмпл голоса" data-char-id="${id}">▶</button>
-      </div>
-    `;
-    el.querySelector('.char-item-name').textContent = item.name || id;
+    const info = document.createElement('div');
+    info.className = 'char-item-info';
 
+    const name = document.createElement('span');
+    name.className = 'char-item-name';
+    name.textContent = item.name || id;
+
+    const badge = document.createElement('span');
+    badge.className = 'char-badge';
+    const activeDot = document.createElement('span');
+    activeDot.className = 'active-dot';
+    badge.appendChild(activeDot);
+    badge.appendChild(document.createTextNode(id === activeCharId ? 'Активен' : id));
+
+    info.append(name, badge);
+    left.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'char-actions-right';
+    const playButton = document.createElement('button');
+    playButton.className = 'btn-quick-play';
+    playButton.title = 'Прослушать сэмпл голоса';
+    playButton.dataset.charId = id;
+    playButton.textContent = '▶';
+    actions.appendChild(playButton);
+
+    el.append(left, actions);
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-quick-play')) return;
       if (isDirty && selectedCharId !== id) {
@@ -535,143 +556,9 @@ function renderSidebar() {
       selectCharacter(id);
     });
 
-    const playBtn = el.querySelector('.btn-quick-play');
-    playBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const rawVoicePath = `/char_files/${id}/voice.wav`;
-      
-      document.querySelectorAll('.btn-quick-play').forEach(btn => {
-        if (btn !== playBtn) btn.innerText = '▶';
-      });
-
-      if (sidebarAudioPlayer.dataset.charId === id && !sidebarAudioPlayer.paused) {
-        sidebarAudioPlayer.pause();
-        playBtn.innerText = '▶';
-      } else if (sidebarAudioPlayer.dataset.charId === id && sidebarAudioPlayer.paused && sidebarAudioPlayer.src) {
-        sidebarAudioPlayer.play();
-        playBtn.innerText = '⏸';
-      } else {
-        sidebarAudioPlayer.dataset.charId = id;
-        sidebarAudioPlayer.src = `${rawVoicePath}?_t=${Date.now()}`;
-        sidebarAudioPlayer.play();
-        playBtn.innerText = '⏸';
-        
-        sidebarAudioPlayer.onended = () => {
-          playBtn.innerText = '▶';
-          sidebarAudioPlayer.dataset.charId = "";
-        };
-        sidebarAudioPlayer.onpause = () => {
-          playBtn.innerText = '▶';
-        };
-      }
-    });
-
     container.appendChild(el);
   });
 }
-
-async function selectCharacter(id) {
-  switchToCharactersTab();
-
-  if (sidebarAudioPlayer && !sidebarAudioPlayer.paused) {
-    sidebarAudioPlayer.pause();
-    document.querySelectorAll('.btn-quick-play').forEach(btn => btn.innerText = '▶');
-  }
-
-  isLoadingPreset = true;
-  selectedCharId = id;
-  currentDraftAvatarBase64 = "";
-
-  const data = currentPresets[id];
-  if (!data) {
-    isLoadingPreset = false;
-    return;
-  }
-
-  document.getElementById('editor-title').innerText = `Настройка: ${data.name || id}`;
-  document.getElementById('editor-mode-badge').innerText = 'Режим редактирования';
-  document.getElementById('char-id').value = id;
-  document.getElementById('char-id').disabled = true;
-  document.getElementById('char-name').value = data.name || '';
-  document.getElementById('ref-text').value = data.reference_text || '';
-  document.getElementById('speed-slider').value = data.speed !== undefined ? data.speed : 1.0;
-  document.getElementById('speed-val').innerText = `${document.getElementById('speed-slider').value}x`;
-
-  const theme = data.theme || {};
-  document.getElementById('border-color').value = theme.border_color || '#6366f1';
-  document.getElementById('bg-color').value = theme.bg_color || '#0d0b14';
-  document.getElementById('text-color').value = theme.text_color || '#fcebeb';
-  document.getElementById('name-bg-color').value = theme.name_bg_color || '#6366f1';
-  document.getElementById('name-text-color').value = theme.name_text_color || '#ffffff';
-  document.getElementById('bg-opacity-slider').value = theme.bg_opacity !== undefined ? theme.bg_opacity : 0.9;
-  document.getElementById('bg-opacity-val').innerText = `${Math.round(document.getElementById('bg-opacity-slider').value * 100)}%`;
-  document.getElementById('hide-delay-slider').value = theme.hide_delay !== undefined ? theme.hide_delay : 2.0;
-  document.getElementById('hide-delay-val').innerText = `${parseFloat(document.getElementById('hide-delay-slider').value).toFixed(1)}с`;
-
-  document.getElementById('box-shape').value = theme.box_shape || 'shape-rounded';
-  document.getElementById('border-fx').value = theme.border_fx || 'fx-neon';
-  document.getElementById('font-family').value = theme.font_family || 'Comfortaa';
-  document.getElementById('font-size-slider').value = theme.font_size || 22;
-  document.getElementById('font-size-val').innerText = `${document.getElementById('font-size-slider').value}px`;
-  document.getElementById('entrance-animation').value = theme.entrance_animation || 'slide-up';
-  document.getElementById('exit-animation').value = theme.exit_animation || 'fade-out';
-  document.getElementById('text-animation').value = theme.text_animation || 'typewriter';
-  document.getElementById('avatar-position').value = theme.avatar_position || 'left';
-
-  const btnSetActive = document.getElementById('btn-set-active');
-  if (id === activeCharId) {
-    btnSetActive.disabled = true;
-    btnSetActive.innerText = '✓ Активен';
-  } else {
-    btnSetActive.disabled = false;
-    btnSetActive.innerText = 'Сделать активным';
-  }
-
-  draftVoiceBlob = null;
-  originalRawFileBlob = null;
-  stitcherFiles = [];
-  document.getElementById('stitcher-container').classList.add('hidden');
-  document.getElementById('btn-restore-noise').classList.add('hidden');
-  document.getElementById('voice-file-input').value = '';
-  document.getElementById('avatar-file-input').value = '';
-
-  const voiceUrl = `/char_files/${id}/voice.wav?_t=${Date.now()}`;
-  loadAudioToWaveSurfer(voiceUrl);
-
-  try {
-    const resAudio = await fetch(voiceUrl);
-    if (resAudio.ok) {
-      originalRawFileBlob = await resAudio.blob();
-    }
-  } catch (e) {}
-
-  const staticAvatar = document.getElementById('static-avatar');
-  const dynamicAvatar = document.getElementById('dynamic-avatar');
-  const staticAvatarBox = document.getElementById('static-avatar-box');
-  const dynamicAvatarBox = document.getElementById('dynamic-avatar-box');
-
-  if (data.has_avatar) {
-    const avatarUrl = `/char_files/${id}/avatar.png?_t=${Date.now()}`;
-    staticAvatar.src = avatarUrl;
-    dynamicAvatar.src = avatarUrl;
-    staticAvatarBox.classList.remove('hidden');
-    dynamicAvatarBox.classList.remove('hidden');
-  } else {
-    staticAvatar.src = '';
-    dynamicAvatar.src = '';
-    staticAvatarBox.classList.add('hidden');
-    dynamicAvatarBox.classList.add('hidden');
-  }
-
-  updatePreviews();
-  renderSidebar();
-
-  setTimeout(() => {
-    isLoadingPreset = false;
-    setDirty(false);
-  }, 50);
-}
-
 function createNewCharacter() {
   if (isDirty) {
     if (!confirm('У вас есть несохраненные изменения! Создать нового?')) return;

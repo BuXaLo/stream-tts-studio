@@ -47,7 +47,7 @@ def create_donation_router(da_worker, load_da_config, save_da_config, load_da_to
             if "streamerbot_url" in data: da_cfg["streamerbot_url"] = validate_streamerbot_url(data["streamerbot_url"])
             if "streamerbot_action" in data:
                 action = str(data["streamerbot_action"]).strip()
-                if action.startswith("{"):
+                if action.startswith(("{", "[")):
                     try:
                         parsed_action = json.loads(action)
                     except (TypeError, ValueError):

@@ -13,7 +13,7 @@ def _is_loopback_address(value):
     try:
         address = ipaddress.ip_address(value)
         if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
-            return address.ipv4.is_loopback
+            return address.ipv4_mapped.is_loopback
         return address.is_loopback
     except ValueError:
         return str(value).lower() in {"localhost", "localhost."}

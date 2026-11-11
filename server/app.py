@@ -22,12 +22,13 @@ import webbrowser
 import logging
 import asyncio
 import urllib.parse
-from typing import Optional, List
+from typing import Optional
 
 import requests
 import websockets
 
 from studio.core.storage import StorageError, get_file_lock, read_json, write_json_atomic, write_bytes_atomic
+from studio.core.ws import ConnectionManager, ws_manager
 from studio.services.donations import parse_donation
 from studio.services.text import has_speakable_content, num_to_ru_words, sanitize_overlay_text, sanitize_text
 from studio.core.validation import is_valid_bind_host, same_origin
@@ -169,32 +170,7 @@ def save_da_tokens(tokens: dict):
     write_json_atomic(DA_TOKENS_FILE, tokens)
 
 # ==================== WEBSOCKET МЕНЕДЖЕР ====================
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-        self._loop = None
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        self._loop = asyncio.get_event_loop()
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: dict):
-        for connection in list(self.active_connections):
-            try:
-                await connection.send_json(message)
-            except Exception:
-                self.disconnect(connection)
-
-    def broadcast_sync(self, message: dict):
-        if self._loop and self.active_connections:
-            asyncio.run_coroutine_threadsafe(self.broadcast(message), self._loop)
-
-ws_manager = ConnectionManager()
 
 # ==================== DONATIONALERTS ASYNC РАБОТНИК ====================
 DA_AUTH_URL = "https://www.donationalerts.com/oauth/authorize"

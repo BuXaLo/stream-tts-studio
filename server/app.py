@@ -107,14 +107,14 @@ from cosyvoice.cli.cosyvoice import AutoModel
 
 logger.info("=" * 60)
 logger.info("TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + Demucs + DA)")
-print("=" * 60)
+logger.info("=" * 60)
 
 WHISPER_PATH = os.path.join(COSY_DIR, "pretrained_models", "faster-whisper-small")
 COSY_PATH = os.path.join(COSY_DIR, "pretrained_models", "Fun-CosyVoice3-0.5B")
 
 logger.info("Загрузка CosyVoice 3 в GPU...")
 cosyvoice = AutoModel(model_dir=COSY_PATH)
-print("CosyVoice 3 успешно загружен!\n")
+logger.info("CosyVoice 3 успешно загружен")
 
 generation_lock = threading.Lock()
 app = FastAPI(title="TTS & Overlay Studio")
@@ -1018,7 +1018,8 @@ def api_set_active(data: dict):
         presets = load_presets()
         if char_id not in presets:
             raise HTTPException(status_code=404, detail="Персонаж не найден.")
-        set_active_character_id(char_id)
+        with get_file_lock(ACTIVE_FILE):
+            set_active_character_id(char_id)
     return {"status": "ok", "active": char_id}
 
 @app.get("/api/active_overlay_config")
@@ -1189,6 +1190,7 @@ def api_isolate_vocal(
     if not 1 <= shifts <= 10:
         raise HTTPException(status_code=400, detail="shifts должен быть в диапазоне 1–10.")
     device = "cpu"
+    model = None
     try:
         raw_bytes = audio.file.read()
         in_bio = io.BytesIO(raw_bytes)
@@ -1238,6 +1240,8 @@ def api_isolate_vocal(
         logger.exception("Demucs vocal isolation failed")
         raise HTTPException(status_code=500, detail=f"Ошибка очистки голоса: {str(exc)}")
     finally:
+        if model is not None:
+            del model
         if device == "cuda":
             clear_vram()
 
@@ -1334,12 +1338,16 @@ async def api_test_draft_tts(
     temp_voice = None
     voice_path = None
 
+    if not math.isfinite(speed):
+        raise HTTPException(status_code=400, detail="Некорректное значение speed.")
+    speed = max(0.5, min(2.0, speed))
+
     if voice_file:
         try:
             raw_draft = await voice_file.read()
             clean_draft = await asyncio.to_thread(convert_to_clean_wav, raw_draft)
         except RuntimeError as e:
-            print(f"[Draft Audio Convert Error] {e}")
+            logger.warning("Draft audio conversion failed: %s", e)
             raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")
 
         temp_voice = os.path.join(TEMP_DIR, f"draft_{int(time.time()*1000)}.wav")
@@ -1521,7 +1529,7 @@ def api_speak(request: SpeakRequest):
     ref_text = char_data.get("reference_text", "")
 
     try:
-        print(f"[SPEAK] Персонаж: {char_data.get('name', char_id)} (ID: {char_id}) | Скорость: {speed}")
+        logger.info("SPEAK: персонаж %s (ID: %s), скорость %s", char_data.get("name", char_id), char_id, speed)
         wav_bytes, duration = generate_voice(raw_text, voice_path, ref_text, speed)
 
         ws_manager.broadcast_sync({

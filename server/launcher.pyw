@@ -103,7 +103,7 @@ class LauncherController:
             self.write_log("Backend завершён, код: {}".format(code))
 
     def dashboard_url(self):
-        return self.backend_url + "/"
+        return self.backend_url + "/dashboard/"
 
     def stop_backend(self):
         with self.lock:
@@ -198,6 +198,15 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 controller.set_state(status="error", detail="Не удалось запустить backend: {}".format(exc))
                 controller.write_log("Ошибка запуска backend: {}".format(exc))
+                payload = json.dumps({"detail": str(exc)}, ensure_ascii=False).encode("utf-8")
+                self._send(500, "application/json; charset=utf-8", payload)
+            return
+        if path == "/launcher-stop":
+            try:
+                controller.stop_backend()
+                self._send(200, "application/json; charset=utf-8", b'{"status":"stopped"}')
+            except Exception as exc:
+                controller.write_log("Ошибка выключения backend: {}".format(traceback.format_exc()))
                 payload = json.dumps({"detail": str(exc)}, ensure_ascii=False).encode("utf-8")
                 self._send(500, "application/json; charset=utf-8", payload)
             return
@@ -451,7 +460,28 @@ class Win32TrayIcon:
             self.user32.PostMessageW(hwnd, self.WM_COMMAND, command, 0)
 
     def _open_monitor(self):
-        webbrowser.open(self.monitor_url, new=2)
+        open_monitor_window(self.monitor_url)
+
+
+def open_monitor_window(url):
+    edge_candidates = [
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+        os.path.join(os.environ.get("PROGRAMFILES", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+    ]
+    edge_path = next((path for path in edge_candidates if path and os.path.isfile(path)), None)
+    if edge_path:
+        try:
+            subprocess.Popen(
+                [edge_path, "--app=" + url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+            return
+        except OSError:
+            pass
+    webbrowser.open(url)
 
 
 def backend_address():
@@ -528,7 +558,7 @@ def main():
         tray = Win32TrayIcon(monitor_url, controller)
         try:
             tray.start()
-            webbrowser.open(monitor_url, new=2)
+            open_monitor_window(monitor_url)
             controller.write_log("Монитор открыт в браузере по умолчанию.")
             try:
                 controller.start_backend()

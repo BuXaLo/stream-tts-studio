@@ -733,7 +733,7 @@ def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, spee
         if not sentences:
             sentences = [clean_text]
 
-        print(f"\n[TTS] Старт генерации ({len(sentences)} предл., {n_timesteps} steps): \"{clean_text}\"")
+        logger.info("TTS: старт генерации (%s предложений, %s steps)", len(sentences), n_timesteps)
 
         with torch.inference_mode():
             prompt_text = "You are a helpful assistant.<|endofprompt|>" + ref_text
@@ -784,7 +784,7 @@ def _generate_voice_impl(raw_text: str, voice_wav_path: str, ref_text: str, spee
 
             elapsed = round(time.time() - start_time, 2)
             duration = round(len(final_audio) / sr, 2)
-            print(f"[TTS] Успешно! Синтез: {elapsed}с | Длительность аудио: {duration}с\n")
+            logger.info("TTS успешно: синтез %ss, длительность %ss", elapsed, duration)
 
             return numpy_to_wav(final_audio, sr), duration
 

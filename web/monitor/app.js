@@ -211,7 +211,7 @@ function addStartupLines(content) {
         if (/^[ \t]/.test(rawLine) && startupLastEvent) {
             const previousLevel = startupLastEvent.level;
             startupLastEvent.message += "\n" + rawLine;
-
+            const nextLevel = startupLevel(startupLastEvent.message);
             if (nextLevel !== previousLevel) {
                 counts[previousLevel]--;
                 counts[nextLevel]++;
@@ -228,12 +228,13 @@ function addStartupLines(content) {
         const event = {
             event_id: "startup:" + lineOffset,
             type: "log",
-
+            level: startupLevel(rawLine),
             logger: "startup",
             timestamp: match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString(),
-
+            message: match ? match[3] : rawLine.trim()
         };
         handleEvent(event);
+        startupLastEvent = event;
         startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
     }
 }

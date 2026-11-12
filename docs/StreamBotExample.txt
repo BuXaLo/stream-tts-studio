@@ -1,0 +1,575 @@
+TTS
+_________________________________
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
+public class CPHInline
+{
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+
+    // Порядок = приоритет. Локальный первым.
+    private static readonly string[] ServerUrls = { "http://127.0.0.1:8765", "http://192.168.2.60:8765" };
+    private const int CacheSeconds = 30;
+    private const int MaxLength = 300;
+    private static int fileIndex = 0;
+
+    public bool Execute()
+    {
+        try
+        {
+            string userName = "Зритель";
+            if (CPH.TryGetArg("user", out string userArg) && !string.IsNullOrWhiteSpace(userArg)) userName = userArg;
+            else if (CPH.TryGetArg("userName", out string uNameArg) && !string.IsNullOrWhiteSpace(uNameArg)) userName = uNameArg;
+
+            string text;
+            if (!CPH.TryGetArg("rawInput", out text) || string.IsNullOrWhiteSpace(text))
+            {
+                if (!CPH.TryGetArg("prompt", out text) || string.IsNullOrWhiteSpace(text))
+                {
+                    if (!CPH.TryGetArg("message", out text) || string.IsNullOrWhiteSpace(text))
+                    {
+                        CPH.SendMessage($"@{userName}, текст сообщения для озвучки не может быть пустым!");
+                        return false;
+                    }
+                }
+            }
+
+            text = text.Trim();
+            if (text.Length > MaxLength)
+            {
+                CPH.SendMessage($"@{userName}, твое сообщение слишком длинное ({text.Length} симв.)! Лимит — {MaxLength}.");
+                return false;
+            }
+
+            string cleanText = CleanForTTS(text);
+            if (string.IsNullOrWhiteSpace(cleanText)) return false;
+
+            string json = "{\"text\":\"" + EscapeJson(cleanText) + "\",\"speed\":1.0}";
+
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.SendMessage($"@{userName}, TTS-сервер сейчас недоступен.");
+                return false;
+            }
+
+            Directory.CreateDirectory(OutputDirectory);
+            fileIndex = (fileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "tts_" + fileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
+
+            CPH.PlaySound(outputFile, 1.0f, true, "MitaTTS", true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("MITA TTS EXCEPTION: " + ex.ToString());
+            return false;
+        }
+    }
+
+    // Пробует закэшированный сервер, при сбое переопределяет и повторяет один раз
+    private byte[] RequestWav(string json)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            string baseUrl = ResolveServer(attempt > 0);
+            if (baseUrl == null) return null;
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode)
+                {
+                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");
+                    return null; // сервер жив, но отказал: не перебираем
+                }
+                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                return wav.Length < 1000 ? null : wav;
+            }
+            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }
+            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }
+        }
+        return null;
+    }
+
+    private string ResolveServer(bool force)
+    {
+        if (!force)
+        {
+            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);
+            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);
+            if (!string.IsNullOrEmpty(cached) && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)
+                return cached;
+        }
+
+        foreach (string baseUrl in ServerUrls)
+        {
+            try
+            {
+                var r = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();
+                if (r.IsSuccessStatusCode)
+                {
+                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);
+                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);
+                    return baseUrl;
+                }
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static string CleanForTTS(string s)
+    {
+        s = Regex.Replace(s, @"\bBuXaLo\b", "Бухало", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\p{Cs}|\p{So}|\p{Sk}|\p{Sm}|[\u200D\uFE0F\u20E3]", "");
+        s = Regex.Replace(s, @"[\*""`_#\[\]\(\)<>~]", "");
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+}
+
+_______________________________________
+
+Follow
+__________________________________
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
+public class CPHInline
+{
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+
+    // Порядок = приоритет. Локальная студия первой.
+    private static readonly string[] ServerUrls = { "http://127.0.0.1:8765", "http://192.168.2.60:8765" };
+    private const int CacheSeconds = 30;
+    private static int alertFileIndex = 0;
+    private static readonly Random random = new Random();
+
+    private static readonly string[] FollowTemplates = new string[]
+    {
+        "Ого, новенький? Привет, {user}. Надеюсь, ты понимаешь, что из этой комнаты выхода уже нет.",
+        "{user}, добро пожаловать. Бухало, смотри, у нас новый гость! Я закрою дверь на замок, чтобы он не ушёл.",
+        "О, {user}! Какая приятная неожиданность. Располагайся, мы с Бухало как раз тебя ждали.",
+        "Привет-привет, {user}! Надеюсь, тебе здесь понравится. А если нет — бежать всё равно уже поздно."
+    };
+
+    public bool Execute()
+    {
+        try
+        {
+            CPH.LogInfo("=== MITA EVENT: FOLLOW ===");
+
+            string userName = "новичок";
+            if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) userName = u;
+            else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) userName = un;
+
+            string template = FollowTemplates[random.Next(FollowTemplates.Length)];
+            string mitaAnswer = CleanForAlerts(template.Replace("{user}", userName));
+
+            string json = "{\"text\":\"" + EscapeJson(mitaAnswer) + "\",\"speed\":1.0}";
+
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("MITA FOLLOW: TTS-студия недоступна.");
+                return false;
+            }
+
+            Directory.CreateDirectory(OutputDirectory);
+            alertFileIndex = (alertFileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "mita_follow_" + alertFileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
+
+            CPH.PlaySound(outputFile, 1.0f, true, "MitaTTS", true);
+            CPH.LogInfo("=== MITA FOLLOW: SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("MITA FOLLOW EXCEPTION: " + ex.ToString());
+            return false;
+        }
+    }
+
+    // Пробует закэшированную студию, при сбое переопределяет и повторяет один раз
+    private byte[] RequestWav(string json)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            string baseUrl = ResolveServer(attempt > 0);
+            if (baseUrl == null) return null;
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode)
+                {
+                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");
+                    return null; // студия жива, но отказала: не перебираем
+                }
+                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                return wav.Length < 1000 ? null : wav;
+            }
+            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }
+            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }
+        }
+        return null;
+    }
+
+    private string ResolveServer(bool force)
+    {
+        if (!force)
+        {
+            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);
+            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);
+            if (!string.IsNullOrEmpty(cached) && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)
+                return cached;
+        }
+
+        foreach (string baseUrl in ServerUrls)
+        {
+            try
+            {
+                var r = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();
+                if (r.IsSuccessStatusCode)
+                {
+                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);
+                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);
+                    return baseUrl;
+                }
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static string CleanForAlerts(string s)
+    {
+        s = Regex.Replace(s, @"\bBuXaLo\b", "Бухало", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\p{Cs}|\p{So}|\p{Sk}|\p{Sm}|[\u200D\uFE0F\u20E3]", "");
+        s = Regex.Replace(s, @"[\*""`_#\[\]\(\)<>~]", "");
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+}
+
+___________________________________________________________
+
+Raid
+_____________________________________________________
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
+public class CPHInline
+{
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+
+    // Порядок = приоритет. Локальная студия первой.
+    private static readonly string[] ServerUrls = { "http://127.0.0.1:8765", "http://192.168.2.60:8765" };
+    private const int CacheSeconds = 30;
+    private static int alertFileIndex = 0;
+    private static readonly Random random = new Random();
+
+    private static readonly string[] RaidTemplates = new string[]
+    {
+        "Ой, привет, {streamer}! С тобой пришло {viewers_phrase}? Бухало, нам нужно больше стульев и крепкие замки на двери.",
+        "Привет, {streamer}! Какая компания — {viewers_phrase}. Смотрите сколько хотите, но помните: Бухало только мой.",
+        "Ого, рейд от {streamer}! К нам заглянуло {viewers_phrase}. Добро пожаловать в нашу комнатку, только выход отсюда я уже закрыла."
+    };
+
+    public bool Execute()
+    {
+        try
+        {
+            CPH.LogInfo("=== MITA EVENT: RAID ===");
+
+            string streamerName = "Стример";
+            if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) streamerName = u;
+            else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) streamerName = un;
+
+            int viewers = 1;
+            if (CPH.TryGetArg("viewers", out int vCount)) viewers = vCount;
+            else if (CPH.TryGetArg("viewerCount", out int vc)) viewers = vc;
+
+            // Число оставляем цифрами: студия сама переведёт его в слова.
+            // Здесь подбирается только форма слова "человек/человека".
+            string viewersPhrase = viewers + " " + GetHumanDeclension(viewers);
+            string template = RaidTemplates[random.Next(RaidTemplates.Length)];
+            string mitaAnswer = CleanForAlerts(template.Replace("{streamer}", streamerName).Replace("{viewers_phrase}", viewersPhrase));
+
+            string json = "{\"text\":\"" + EscapeJson(mitaAnswer) + "\",\"speed\":1.0}";
+
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("MITA RAID: TTS-студия недоступна.");
+                return false;
+            }
+
+            Directory.CreateDirectory(OutputDirectory);
+            alertFileIndex = (alertFileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "mita_raid_" + alertFileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
+
+            CPH.PlaySound(outputFile, 1.0f, true, "MitaTTS", true);
+            CPH.LogInfo("=== MITA RAID: SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("MITA RAID EXCEPTION: " + ex.ToString());
+            return false;
+        }
+    }
+
+    // Пробует закэшированную студию, при сбое переопределяет и повторяет один раз
+    private byte[] RequestWav(string json)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            string baseUrl = ResolveServer(attempt > 0);
+            if (baseUrl == null) return null;
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode)
+                {
+                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");
+                    return null; // студия жива, но отказала: не перебираем
+                }
+                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                return wav.Length < 1000 ? null : wav;
+            }
+            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }
+            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }
+        }
+        return null;
+    }
+
+    private string ResolveServer(bool force)
+    {
+        if (!force)
+        {
+            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);
+            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);
+            if (!string.IsNullOrEmpty(cached) && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)
+                return cached;
+        }
+
+        foreach (string baseUrl in ServerUrls)
+        {
+            try
+            {
+                var r = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();
+                if (r.IsSuccessStatusCode)
+                {
+                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);
+                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);
+                    return baseUrl;
+                }
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static string CleanForAlerts(string s)
+    {
+        s = Regex.Replace(s, @"\bBuXaLo\b", "Бухало", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\p{Cs}|\p{So}|\p{Sk}|\p{Sm}|[\u200D\uFE0F\u20E3]", "");
+        s = Regex.Replace(s, @"[\*""`_#\[\]\(\)<>~]", "");
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+
+    private static string GetHumanDeclension(int n)
+    {
+        int rem100 = Math.Abs(n) % 100;
+        int rem10 = rem100 % 10;
+        if (rem100 >= 11 && rem100 <= 19) return "человек";
+        if (rem10 >= 2 && rem10 <= 4) return "человека";
+        return "человек";
+    }
+}
+
+_______________________________
+
+Donation
+____________________________________________________
+
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
+public class CPHInline
+{
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+
+    // Порядок = приоритет. Локальная студия первой.
+    private static readonly string[] ServerUrls = { "http://127.0.0.1:8765", "http://192.168.2.60:8765" };
+    private const int CacheSeconds = 30;
+    private static int alertFileIndex = 0;
+
+    public bool Execute()
+    {
+        try
+        {
+            CPH.LogInfo("=== MITA EVENT: DONATION ===");
+
+            string donorName = "Добрый человек";
+            if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) donorName = u;
+            else if (CPH.TryGetArg("donorName", out string dn) && !string.IsNullOrWhiteSpace(dn)) donorName = dn;
+            else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) donorName = un;
+
+            int amount = 100;
+            if (CPH.TryGetArg("amount", out int amtInt)) amount = amtInt;
+            else if (CPH.TryGetArg("amount", out double amtDbl)) amount = (int)Math.Round(amtDbl);
+
+            string currency = "RUB";
+            if (CPH.TryGetArg("currency", out string cur) && !string.IsNullOrWhiteSpace(cur)) currency = cur.ToUpper().Trim();
+
+            string message = "";
+            if (CPH.TryGetArg("rawInput", out string ri) && !string.IsNullOrWhiteSpace(ri)) message = ri;
+            else if (CPH.TryGetArg("message", out string msg) && !string.IsNullOrWhiteSpace(msg)) message = msg;
+
+            // Сумму оставляем цифрами: студия сама переведёт её в слова с правильным склонением.
+            // Здесь подбирается только форма валюты (рубль/рубля/рублей).
+            string moneyPhrase = amount + " " + GetCurrencyDeclension(amount, currency);
+
+            string mitaAnswer = string.IsNullOrWhiteSpace(message)
+                ? $"Спасибо, {donorName}, за {moneyPhrase}! Мы с Бухало очень рады твоей поддержке."
+                : $"Смотри, Бухало, {donorName} прислал {moneyPhrase}. Он пишет: {message}";
+
+            mitaAnswer = CleanForAlerts(mitaAnswer);
+
+            string json = "{\"text\":\"" + EscapeJson(mitaAnswer) + "\",\"speed\":1.0}";
+
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("MITA DONATION: TTS-студия недоступна, донат не озвучен.");
+                return false;
+            }
+
+            Directory.CreateDirectory(OutputDirectory);
+            alertFileIndex = (alertFileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "mita_donat_" + alertFileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
+
+            CPH.PlaySound(outputFile, 1.0f, true, "MitaTTS", true);
+            CPH.LogInfo("=== MITA DONATION: SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("MITA DONATION EXCEPTION: " + ex.ToString());
+            return false;
+        }
+    }
+
+    // Пробует закэшированную студию, при сбое переопределяет и повторяет один раз
+    private byte[] RequestWav(string json)
+    {
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            string baseUrl = ResolveServer(attempt > 0);
+            if (baseUrl == null) return null;
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode)
+                {
+                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");
+                    return null; // студия жива, но отказала: не перебираем
+                }
+                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                return wav.Length < 1000 ? null : wav;
+            }
+            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }
+            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }
+        }
+        return null;
+    }
+
+    private string ResolveServer(bool force)
+    {
+        if (!force)
+        {
+            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);
+            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);
+            if (!string.IsNullOrEmpty(cached) && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)
+                return cached;
+        }
+
+        foreach (string baseUrl in ServerUrls)
+        {
+            try
+            {
+                var r = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();
+                if (r.IsSuccessStatusCode)
+                {
+                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);
+                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);
+                    return baseUrl;
+                }
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static string CleanForAlerts(string s)
+    {
+        s = Regex.Replace(s, @"\bBuXaLo\b", "Бухало", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, @"\p{Cs}|\p{So}|\p{Sk}|\p{Sm}|[\u200D\uFE0F\u20E3]", "");
+        s = Regex.Replace(s, @"[\*""`_#\[\]\(\)<>~]", "");
+        return Regex.Replace(s, @"\s+", " ").Trim();
+    }
+
+    private static string GetCurrencyDeclension(int n, string currency)
+    {
+        int rem100 = Math.Abs(n) % 100;
+        int rem10 = rem100 % 10;
+        switch (currency)
+        {
+            case "USD": return (rem100 >= 11 && rem100 <= 19) ? "долларов" : (rem10 == 1 ? "доллар" : (rem10 >= 2 && rem10 <= 4 ? "доллара" : "долларов"));
+            case "EUR": return "евро";
+            case "KZT": return "тенге";
+            case "BYN": return (rem100 >= 11 && rem100 <= 19) ? "белорусских рублей" : (rem10 == 1 ? "белорусский рубль" : (rem10 >= 2 && rem10 <= 4 ? "белорусских рубля" : "белорусских рублей"));
+            case "RUB":
+            default: return (rem100 >= 11 && rem100 <= 19) ? "рублей" : (rem10 == 1 ? "рубль" : (rem10 >= 2 && rem10 <= 4 ? "рубля" : "рублей"));
+        }
+    }
+}

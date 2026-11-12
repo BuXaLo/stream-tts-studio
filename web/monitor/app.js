@@ -7,6 +7,8 @@ let socket = null;
 let launcherMode = new URLSearchParams(location.search).has("launcher");
 let backendActive = false;
 let backendConnected = false;
+let backendBaseUrl = null;
+let daPollInProgress = false;
 let shutdownRequested = false;
 let startupOffset = 0;
 let startupDecoder = new TextDecoder("utf-8");
@@ -143,6 +145,8 @@ function setLauncherButton(status) {
 }
 
 function connect(backendUrl) {
+    backendBaseUrl = backendUrl;
+    pollDonationAlerts();
     const parsed = new URL(backendUrl);
     const scheme = parsed.protocol === "https:" ? "wss" : "ws";
     socket = new WebSocket(scheme + "://" + parsed.host + "/ws/monitor");
@@ -171,6 +175,41 @@ function connect(backendUrl) {
         $("connectionText").textContent = "Ошибка WebSocket";
         socket.close();
     };
+}
+
+
+function setDonationAlertsStatus(state, text, details) {
+    const status = $("daStatus");
+    status.className = "status " + state;
+    status.title = details || "";
+    $("daStatusText").textContent = text;
+}
+
+async function pollDonationAlerts() {
+    if (!backendBaseUrl || daPollInProgress) return;
+    daPollInProgress = true;
+    try {
+        const url = new URL("/api/da/config", backendBaseUrl);
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        const config = data.config || {};
+
+        if (config.enabled !== true) {
+            setDonationAlertsStatus("disabled", "Отключён", "Интеграция DonationAlerts отключена в настройках");
+        } else if (data.is_connected === true) {
+            const account = String(data.authorized_user || "").trim();
+            setDonationAlertsStatus("connected", account ? "Активен · " + account : "Активен", "Подключение к DonationAlerts установлено");
+        } else if (data.last_error) {
+            setDonationAlertsStatus("error", "Ошибка", String(data.last_error));
+        } else {
+            setDonationAlertsStatus("connecting", "Подключение…", "Ожидание подключения к DonationAlerts");
+        }
+    } catch (error) {
+        setDonationAlertsStatus("unknown", "Нет данных", "Не удалось получить статус DonationAlerts: " + error.message);
+    } finally {
+        daPollInProgress = false;
+    }
 }
 
 function startupLevel(message) {
@@ -356,4 +395,5 @@ if (launcherMode) {
     connect(location.origin);
 }
 setInterval(() => $("clock").textContent = new Date().toLocaleString("ru-RU"), 1000);
+setInterval(pollDonationAlerts, 5000);
 })();

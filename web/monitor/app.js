@@ -209,10 +209,12 @@ function addStartupLines(content) {
         startupBuffer = startupBuffer.slice(newlineIndex + 1);
         const rawLine = rawWithEnding.replace(/\r?\n$/, "");
         if (!rawLine.trim()) {
+            startupCosyVoiceSourceCandidate = null;
             startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
             continue;
         }
         if (/^[ \t]/.test(rawLine) && startupLastEvent) {
+            startupCosyVoiceSourceCandidate = null;
             const previousLevel = startupLastEvent.level;
             startupLastEvent.message += "\n" + rawLine;
             const nextLevel = startupLastEvent.suppressWarningClassification

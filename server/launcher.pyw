@@ -162,8 +162,16 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
                 try:
                     with open(LOG_FILE, "rb") as stream:
                         stream.seek(0, os.SEEK_END)
-                        stream.seek(max(0, stream.tell() - 131072))
-                        content = stream.read().decode("utf-8", errors="replace")
+                        position = stream.tell()
+                        chunks = []
+                        decoded_content = ""
+                        while position > 0 and len(decoded_content) <= 131072:
+                            chunk_size = min(65536, position)
+                            position -= chunk_size
+                            stream.seek(position)
+                            chunks.insert(0, stream.read(chunk_size))
+                            decoded_content = b"".join(chunks).decode("utf-8", errors="replace")
+                        content = decoded_content[max(0, len(decoded_content) - 131072):]
                 except OSError:
                     content = ""
                 self._send(200, "text/plain; charset=utf-8", content.encode("utf-8"))

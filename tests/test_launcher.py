@@ -75,6 +75,10 @@ def test_startup_log_offset_returns_only_appended_bytes(tmp_path, monkeypatch):
             next_offset = int(response.headers["X-Log-Offset"])
         assert second_payload == appended
         assert next_offset == len(initial) + len(appended)
+
+        with urllib.request.urlopen(base_url, timeout=3) as response:
+            legacy_payload = response.read()
+        assert legacy_payload == initial + appended
     finally:
         server.shutdown()
         server.server_close()

@@ -8,7 +8,12 @@ let launcherMode = new URLSearchParams(location.search).has("launcher");
 let backendActive = false;
 let backendConnected = false;
 let shutdownRequested = false;
-let bootLineCount = 0;
+let startupOffset = 0;
+let startupDecoder = new TextDecoder("utf-8");
+let startupEncoder = new TextEncoder();
+let startupBuffer = "";
+let startupBufferOffset = 0;
+let startupLastEvent = null;
 
 const timeText = value => {
     const date = new Date(value);
@@ -147,7 +152,11 @@ function connect(backendUrl) {
         if (!shutdownRequested) setLauncherButton("ready");
     };
     socket.onmessage = message => {
-        try { handleEvent(JSON.parse(message.data)); } catch (_) {}
+        try {
+            const event = JSON.parse(message.data);
+            if (launcherMode && event.type === "log") return;
+            handleEvent(event);
+        } catch (_) {}
     };
     socket.onclose = event => {
         backendConnected = false;
@@ -163,24 +172,51 @@ function connect(backendUrl) {
     };
 }
 
+function startupLevel(message) {
+    if (/Traceback|Error|Exception|CRITICAL/i.test(message)) return "error";
+    if (/Warning|^WARNING\b/i.test(message)) return "warning";
+    return "info";
+}
+
 function addStartupLines(content) {
-    const lines = content.split(/\r?\n/);
-    for (; bootLineCount < lines.length; bootLineCount++) {
-        const line = lines[bootLineCount].trim();
-        if (!line) continue;
-        const match = line.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+)\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+(.*)$/);
-        const levelName = match ? match[2] : "INFO";
-        const level = levelName === "WARN" || levelName === "WARNING" ? "warning" :
-            levelName === "ERROR" || levelName === "CRITICAL" ? "error" : "info";
-        const timestamp = match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString();
-        handleEvent({
-            event_id: "startup:" + bootLineCount,
+    startupBuffer += content;
+    let newlineIndex;
+    while ((newlineIndex = startupBuffer.indexOf("\n")) !== -1) {
+        const rawWithEnding = startupBuffer.slice(0, newlineIndex + 1);
+        startupBuffer = startupBuffer.slice(newlineIndex + 1);
+        const rawLine = rawWithEnding.replace(/\r?\n$/, "");
+        if (!rawLine.trim()) {
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
+        if (/^[ \t]/.test(rawLine) && startupLastEvent) {
+            const previousLevel = startupLastEvent.level;
+            startupLastEvent.message += "\n" + rawLine;
+            const nextLevel = startupLevel(startupLastEvent.message);
+            if (nextLevel !== previousLevel) {
+                counts[previousLevel]--;
+                counts[nextLevel]++;
+                $(previousLevel === "warning" ? "warningCount" : previousLevel + "Count").textContent = counts[previousLevel];
+                $(nextLevel === "warning" ? "warningCount" : nextLevel + "Count").textContent = counts[nextLevel];
+                startupLastEvent.level = nextLevel;
+            }
+            renderLogs();
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
+        const lineOffset = startupBufferOffset;
+        const match = rawLine.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+)\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+(.*)$/);
+        const event = {
+            event_id: "startup:" + lineOffset,
             type: "log",
-            level,
+            level: startupLevel(rawLine),
             logger: "startup",
-            timestamp,
-            message: match ? match[3] : line
-        });
+            timestamp: match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString(),
+            message: match ? match[3] : rawLine.trim()
+        };
+        handleEvent(event);
+        startupLastEvent = event;
+        startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
     }
 }
 
@@ -188,11 +224,20 @@ async function pollLauncher() {
     try {
         const [statusResponse, logResponse] = await Promise.all([
             fetch("/launcher-status", { cache: "no-store" }),
-            fetch("/startup-log", { cache: "no-store" })
+            fetch("/startup-log?offset=" + startupOffset, { cache: "no-store" })
         ]);
         if (!statusResponse.ok || !logResponse.ok) throw new Error("Не удалось получить состояние запуска");
         const status = await statusResponse.json();
-        addStartupLines(await logResponse.text());
+        const offsetHeader = logResponse.headers.get("X-Log-Offset");
+        const nextOffset = offsetHeader === null ? NaN : Number(offsetHeader);
+        if (Number.isFinite(nextOffset) && nextOffset < startupOffset) {
+            startupDecoder = new TextDecoder("utf-8");
+            startupBuffer = "";
+            startupBufferOffset = 0;
+            startupLastEvent = null;
+        }
+        addStartupLines(startupDecoder.decode(await logResponse.arrayBuffer(), { stream: true }));
+        if (Number.isFinite(nextOffset)) startupOffset = nextOffset;
 
         if (status.close_monitor) {
             window.close();

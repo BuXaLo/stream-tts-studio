@@ -12,7 +12,7 @@ import urllib.request
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SERVER_DIR)
@@ -157,12 +157,41 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
             self._send(200, "application/json; charset=utf-8", payload)
             return
         if path == "/startup-log":
+            query = parse_qs(urlsplit(self.path).query)
+            if "offset" not in query:
+                try:
+                    with open(LOG_FILE, "rb") as stream:
+                        stream.seek(0, os.SEEK_END)
+                        stream.seek(max(0, stream.tell() - 131072))
+                        content = stream.read().decode("utf-8", errors="replace")
+                except OSError:
+                    content = ""
+                self._send(200, "text/plain; charset=utf-8", content.encode("utf-8"))
+                return
             try:
-                with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as stream:
-                    content = stream.read()[-131072:]
+                offset = int(query["offset"][0])
+                if offset < 0:
+                    raise ValueError
+            except (IndexError, ValueError):
+                self.send_error(400, "Invalid log offset")
+                return
+            try:
+                with open(LOG_FILE, "rb") as stream:
+                    size = os.fstat(stream.fileno()).st_size
+                    if offset > size:
+                        offset = 0
+                    stream.seek(offset)
+                    payload = stream.read()
+                    new_offset = stream.tell()
             except OSError:
-                content = ""
-            self._send(200, "text/plain; charset=utf-8", content.encode("utf-8"))
+                payload = b""
+                new_offset = 0
+            self._send(
+                200,
+                "text/plain; charset=utf-8",
+                payload,
+                headers={"X-Log-Offset": str(new_offset)},
+            )
             return
         assets = {
             "/": ("index.html", "text/html; charset=utf-8"),
@@ -224,11 +253,13 @@ class MonitorLauncherHandler(BaseHTTPRequestHandler):
             return
         self.send_error(404)
 
-    def _send(self, status, content_type, payload):
+    def _send(self, status, content_type, payload, headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(payload)
 

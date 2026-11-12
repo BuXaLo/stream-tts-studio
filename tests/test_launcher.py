@@ -1,4 +1,9 @@
 from pathlib import Path
+import importlib.machinery
+import importlib.util
+import threading
+import urllib.request
+from http.server import ThreadingHTTPServer
 
 
 def test_monitor_launcher_tray_and_backend_lifecycle():
@@ -37,3 +42,40 @@ def test_monitor_launcher_tray_and_backend_lifecycle():
     assert "CreateMutexW" in source
     main_start = source.index("def main():")
     assert source.index("tray.start()", main_start) < source.index("controller.start_backend()", main_start)
+
+def test_startup_log_offset_returns_only_appended_bytes(tmp_path, monkeypatch):
+    launcher_path = Path(__file__).resolve().parents[1] / "server" / "launcher.pyw"
+    loader = importlib.machinery.SourceFileLoader("test_monitor_launcher_module", str(launcher_path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+
+    log_path = tmp_path / "startup.log"
+    initial = "first line\n".encode("utf-8")
+    appended = "новая строка\n".encode("utf-8")
+    log_path.write_bytes(initial)
+    monkeypatch.setattr(module, "LOG_FILE", str(log_path))
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), module.MonitorLauncherHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = "http://127.0.0.1:{}/startup-log".format(server.server_address[1])
+    try:
+        with urllib.request.urlopen(base_url + "?offset=0", timeout=3) as response:
+            first_payload = response.read()
+            offset = int(response.headers["X-Log-Offset"])
+        assert first_payload == initial
+        assert offset == len(initial)
+
+        with log_path.open("ab") as stream:
+            stream.write(appended)
+
+        with urllib.request.urlopen(base_url + "?offset={}".format(offset), timeout=3) as response:
+            second_payload = response.read()
+            next_offset = int(response.headers["X-Log-Offset"])
+        assert second_payload == appended
+        assert next_offset == len(initial) + len(appended)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)

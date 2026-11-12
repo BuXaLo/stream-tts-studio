@@ -295,6 +295,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {
@@ -372,6 +373,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {

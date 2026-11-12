@@ -254,6 +254,7 @@ async function pollLauncher() {
             startupBuffer = "";
             startupBufferOffset = 0;
             startupLastEvent = null;
+            startupSuppressCosyVoiceContinuation = false;
         }
         addStartupLines(startupDecoder.decode(await logResponse.arrayBuffer(), { stream: true }));
         if (Number.isFinite(nextOffset)) startupOffset = nextOffset;

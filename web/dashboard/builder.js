@@ -138,8 +138,14 @@ function initScriptGenerator() {
     updateGeneratedCode();
   }
 
-  function getCommonHelpers(includeMoney, includeHuman) {
+  function getCommonHelpers(includeMoney, includeHuman, serverUrls) {
     let res = "";
+    res += '\n    // Первый адрес — локальная студия. Если Streamer.bot на другом ПК, замените 192.168.1.111 на IP компьютера со Stream TTS Studio.\n';
+    res += '    private static readonly string[] ServerUrls = { "' + serverUrls.primary + '", "' + serverUrls.secondary + '" };\n';
+    res += '    private const int CacheSeconds = 30;\n';
+    res += '    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };\n';
+    res += '\n    private byte[] RequestWav(string json)\n    {\n        for (int attempt = 0; attempt < 2; attempt++)\n        {\n            string baseUrl = ResolveServer(attempt > 0);\n            if (baseUrl == null) return null;\n            try\n            {\n                var content = new StringContent(json, Encoding.UTF8, "application/json");\n                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();\n                if (!response.IsSuccessStatusCode)\n                {\n                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");\n                    return null;\n                }\n                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();\n                return wav.Length < 1000 ? null : wav;\n            }\n            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }\n            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }\n        }\n        return null;\n    }\n';
+    res += '\n    private string ResolveServer(bool force)\n    {\n        if (!force)\n        {\n            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);\n            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);\n            if (!string.IsNullOrEmpty(cached) && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)\n                return cached;\n        }\n\n        foreach (string baseUrl in ServerUrls)\n        {\n            try\n            {\n                var response = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();\n                if (response.IsSuccessStatusCode)\n                {\n                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);\n                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);\n                    return baseUrl;\n                }\n            }\n            catch { }\n        }\n        return null;\n    }\n';
 
     res += "\n    private static string EscapeJson(string s) => s.Replace(\"\\\\\", \"\\\\\\\\\").Replace(\"\\\"\", \"\\\\\\\"\").Replace(\"\\r\", \"\\\\r\").Replace(\"\\n\", \"\\\\n\");\n";
 
@@ -189,6 +195,10 @@ function initScriptGenerator() {
     const charId = charSelect ? charSelect.value.trim() : "";
     const charArg = charId ? `,\\"character\\":\\"${charId}\\"` : "";
     const serverUrl = getServerSpeakUrl();
+    const serverPort = (serverUrl.match(/:(\\d+)\\/speak$/) || [])[1] || '8765';
+    const primaryServerUrl = serverUrl.replace(/\\/speak$/, '');
+    const secondaryServerUrl = 'http://192.168.1.111:' + serverPort;
+    const serverUrls = { primary: primaryServerUrl, secondary: secondaryServerUrl };
     let code = "";
 
     if (type === 'tts') {
@@ -201,12 +211,12 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private const int MaxLength = ${maxLen};
     private static int fileIndex = 0;
 
@@ -253,17 +263,12 @@ public class CPHInline
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(cleanText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode)
+            byte[] wav = RequestWav(json);
+            if (wav == null)
             {
-                CPH.SendMessage($"@{userName}, не удалось озвучить сообщение (ошибка сервера).");
+                CPH.SendMessage($"@{userName}, TTS-сервер сейчас недоступен.");
                 return false;
             }
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
 
             fileIndex = (fileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "tts_" + fileIndex + ".wav");
@@ -279,7 +284,7 @@ public class CPHInline
             return false;
         }
     }
-` + getCommonHelpers(false, false) + `
+` + getCommonHelpers(false, false, serverUrls) + `
 }`;
     } else if (type === 'donate') {
       const tplNoMsg = (donateNoMsgInp ? donateNoMsgInp.value : "Спасибо, {user}, за поддержку в размере {amount}!").replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -331,13 +336,8 @@ public class CPHInline
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode) return false;
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
+            byte[] wav = RequestWav(json);
+            if (wav == null) return false;
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "donate_" + alertFileIndex + ".wav");
@@ -353,7 +353,7 @@ public class CPHInline
             return false;
         }
     }
-` + getCommonHelpers(true, false) + `
+` + getCommonHelpers(true, false, serverUrls) + `
 }`;
     } else {
       let phrasesArr = [];
@@ -418,13 +418,8 @@ ${phrasesCode}
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode) return false;
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
+            byte[] wav = RequestWav(json);
+            if (wav == null) return false;
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "${type}_" + alertFileIndex + ".wav");
@@ -440,7 +435,7 @@ ${phrasesCode}
             return false;
         }
     }
-` + getCommonHelpers(false, isRaid) + `
+` + getCommonHelpers(false, isRaid, serverUrls) + `
 }`;
     }
 

@@ -90,6 +90,27 @@ Backend по умолчанию доступен на `http://127.0.0.1:8765`; D
 - Не проходят донаты: проверить OAuth status, соединение DonationAlerts и доступность Streamer.bot `/DoAction`.
 - FFmpeg операция не работает: проверить portable FFmpeg и его путь внутри runtime archive.
 
+### Предупреждение ONNX Runtime о CUDAExecutionProvider
+
+В Windows portable-окружении при загрузке CosyVoice 3 может появляться предупреждение вида:
+
+```text
+Specified provider 'CUDAExecutionProvider' is not in available provider names.
+Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
+```
+
+Для текущей конфигурации это ожидаемо и само по себе не означает ошибку генерации или неисправность GPU:
+
+- В используемом наборе зависимостей GPU-вариант `onnxruntime-gpu==1.18.0` предназначен только для Linux; для Windows/macOS предусмотрен `onnxruntime==1.18.0`.
+- Поэтому в Windows `onnxruntime` не предоставляет `CUDAExecutionProvider`. Компонент, который запрашивает CUDA provider, использует доступный fallback, обычно CPU.
+- PyTorch — отдельная подсистема. Если `torch.cuda.is_available()` возвращает `True`, это подтверждает доступность GPU для PyTorch, но не добавляет CUDA provider в ONNX Runtime.
+- В проектном коде нет прямых вызовов `onnxruntime`, `InferenceSession` или `CUDAExecutionProvider`. CosyVoice загружается через внешний runtime-каталог `cosyvoice3`; источник запроса находится в CosyVoice или его зависимостях.
+- faster-whisper в проекте запускается через CTranslate2 на CUDA, когда PyTorch сообщает о доступности GPU. Его Silero VAD использует ONNX Runtime на CPU штатно.
+
+**Текущие действия:** если CosyVoice успешно загружается, генерации проходят без ошибок и производительность устраивает, предупреждение считать информационным для текущей Windows-конфигурации. Не требуется менять код, переустанавливать ONNX Runtime, CUDA, PyTorch или portable-окружение только ради устранения этого сообщения. Не устанавливать `onnxruntime-gpu` поверх текущей среды без отдельной проверки совместимости всего runtime.
+
+Если появятся реальные ошибки генерации, проблемы загрузки модели или подтверждённое ухудшение производительности, диагностировать их отдельно по полному traceback и фактическому использованию CPU/GPU. Само это предупреждение не является достаточным основанием для изменений.
+
 ## 9. Ограничение сетевой экспозиции
 
 Сохранять bind на `127.0.0.1`, если нет явной необходимости в LAN-доступе. Не выставлять API в интернет. Любое изменение host/CORS/auth проверять отдельно со всеми локальными клиентами.

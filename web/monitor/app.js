@@ -9,6 +9,9 @@ let backendActive = false;
 let backendConnected = false;
 let backendBaseUrl = null;
 let daPollInProgress = false;
+let daStartupState = "unknown";
+let startupCollectionActive = true;
+let daStartupConnectedMessageSeen = false;
 let shutdownRequested = false;
 let startupOffset = 0;
 let startupDecoder = new TextDecoder("utf-8");
@@ -195,17 +198,22 @@ async function pollDonationAlerts() {
         const data = await response.json();
         const config = data.config || {};
 
-        if (config.enabled !== true) {
+        if (config.enabled === false) {
+            daStartupState = "disabled";
             setDonationAlertsStatus("disabled", "Отключён", "Интеграция DonationAlerts отключена в настройках");
-        } else if (data.is_connected === true) {
+        } else if (config.enabled === true && data.is_connected === true) {
+            daStartupState = "connected";
             const account = String(data.authorized_user || "").trim();
             setDonationAlertsStatus("connected", account ? "Активен · " + account : "Активен", "Подключение к DonationAlerts установлено");
-        } else if (data.last_error) {
+        } else if (config.enabled === true && data.last_error) {
+            daStartupState = "error";
             setDonationAlertsStatus("error", "Ошибка", String(data.last_error));
         } else {
+            daStartupState = config.enabled === true ? "connecting" : "unknown";
             setDonationAlertsStatus("connecting", "Подключение…", "Ожидание подключения к DonationAlerts");
         }
     } catch (error) {
+        daStartupState = "unknown";
         setDonationAlertsStatus("unknown", "Нет данных", "Не удалось получить статус DonationAlerts: " + error.message);
     } finally {
         daPollInProgress = false;
@@ -273,30 +281,39 @@ function addStartupLines(content) {
             message: match ? match[3] : rawLine.trim()
         };
         handleEvent(event);
+        if (event.message.includes("Подключено к DA Centrifugo")) {
+            daStartupConnectedMessageSeen = true;
+        }
         startupLastEvent = event;
         startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
     }
 }
 
+async function readStartupLog() {
+    const response = await fetch("/startup-log?offset=" + startupOffset, { cache: "no-store" });
+    if (!response.ok) throw new Error("Не удалось получить startup-журнал");
+    const offsetHeader = response.headers.get("X-Log-Offset");
+    const nextOffset = offsetHeader === null ? NaN : Number(offsetHeader);
+    if (Number.isFinite(nextOffset) && nextOffset < startupOffset) {
+        startupDecoder = new TextDecoder("utf-8");
+        startupBuffer = "";
+        startupBufferOffset = 0;
+        startupLastEvent = null;
+        startupSuppressCosyVoiceContinuation = false;
+    }
+    addStartupLines(startupDecoder.decode(await response.arrayBuffer(), { stream: true }));
+    if (Number.isFinite(nextOffset)) startupOffset = nextOffset;
+}
+
 async function pollLauncher() {
     try {
-        const [statusResponse, logResponse] = await Promise.all([
-            fetch("/launcher-status", { cache: "no-store" }),
-            fetch("/startup-log?offset=" + startupOffset, { cache: "no-store" })
-        ]);
-        if (!statusResponse.ok || !logResponse.ok) throw new Error("Не удалось получить состояние запуска");
+        const statusResponse = await fetch("/launcher-status", { cache: "no-store" });
+        if (!statusResponse.ok) throw new Error("Не удалось получить состояние запуска");
         const status = await statusResponse.json();
-        const offsetHeader = logResponse.headers.get("X-Log-Offset");
-        const nextOffset = offsetHeader === null ? NaN : Number(offsetHeader);
-        if (Number.isFinite(nextOffset) && nextOffset < startupOffset) {
-            startupDecoder = new TextDecoder("utf-8");
-            startupBuffer = "";
-            startupBufferOffset = 0;
-            startupLastEvent = null;
-            startupSuppressCosyVoiceContinuation = false;
+
+        if (startupCollectionActive) {
+            await readStartupLog();
         }
-        addStartupLines(startupDecoder.decode(await logResponse.arrayBuffer(), { stream: true }));
-        if (Number.isFinite(nextOffset)) startupOffset = nextOffset;
 
         if (status.close_monitor) {
             window.close();
@@ -307,6 +324,15 @@ async function pollLauncher() {
             $("connectionText").textContent = backendConnected ? "Подключено" : "Backend запущен, подключение…";
             if (!shutdownRequested) setLauncherButton("ready");
             if (!socket) connect(status.backend_url);
+
+            const startupComplete = daStartupState === "disabled" ||
+                (daStartupState === "connected" && daStartupConnectedMessageSeen);
+            if (startupCollectionActive && startupComplete) {
+                await readStartupLog();
+                addStartupLines(startupDecoder.decode());
+                if (startupBuffer.length) addStartupLines("\n");
+                startupCollectionActive = false;
+            }
         } else if (status.status === "error") {
             backendActive = false;
             setLauncherButton("error");

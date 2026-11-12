@@ -374,3 +374,435 @@ input[type="color"] { width: 100%; height: 34px; border: none; border-radius: 6p
 .snippet-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--accent); }
 .snippet-box pre { background: #0c0b12; border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow-x: auto; max-height: 200px; }
 .snippet-box code { font-family: 'Consolas', monospace; font-size: 11px; color: #d1d5db; line-height: 1.4; }
+
+/* ============================================================
+   Dashboard UI refresh — graphite / violet-blue
+   Scoped to the application shell. Overlay preview rules above
+   intentionally remain unchanged.
+   ============================================================ */
+body {
+  background: #0c1018;
+  color: #e8ebf4;
+  color-scheme: dark;
+}
+
+.app-layout {
+  --ui-bg-main: #0c1018;
+  --ui-bg-sidebar: #111722;
+  --ui-bg-card: #171e2b;
+  --ui-bg-card-hover: #1c2534;
+  --ui-bg-input: #111925;
+  --ui-bg-raised: #202a3b;
+  --ui-border: #2b3548;
+  --ui-border-strong: #3a4660;
+  --ui-text: #e8ebf4;
+  --ui-text-muted: #9ba6ba;
+  --ui-text-soft: #7f8ba2;
+  --ui-accent: #8878f5;
+  --ui-accent-hover: #7464e4;
+  --ui-accent-soft: rgba(136, 120, 245, 0.12);
+  --ui-accent-border: rgba(136, 120, 245, 0.48);
+  color: var(--ui-text);
+  background: var(--ui-bg-main);
+}
+
+.app-layout .sidebar {
+  background: linear-gradient(180deg, #141b28 0%, var(--ui-bg-sidebar) 100%);
+  border-right-color: var(--ui-border);
+}
+
+.app-layout .sidebar-header,
+.app-layout .content-header {
+  border-color: var(--ui-border);
+}
+
+.app-layout .sidebar-header h2,
+.app-layout .content-header h1,
+.app-layout .card h2,
+.app-layout .char-item-name {
+  color: #f1f3fa;
+}
+
+.app-layout .nav-tabs {
+  border-bottom-color: var(--ui-border);
+}
+
+.app-layout .nav-tab-btn {
+  background: transparent;
+  color: var(--ui-text-muted);
+}
+
+.app-layout .nav-tab-btn:hover {
+  color: #f1f3fa;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.app-layout .nav-tab-btn.active {
+  color: #b5aaff;
+  border-bottom-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+
+.app-layout .char-list {
+  scrollbar-color: #3a455b transparent;
+}
+
+.app-layout .char-item {
+  background: #192231;
+  border-color: transparent;
+}
+
+.app-layout .char-item:hover {
+  background: #202a3a;
+  border-color: var(--ui-accent-border);
+}
+
+.app-layout .char-item.selected {
+  background: rgba(116, 100, 228, 0.16);
+  border-color: var(--ui-accent);
+  box-shadow: inset 3px 0 0 var(--ui-accent);
+}
+
+.app-layout .char-item.active-preset {
+  background: rgba(35, 174, 130, 0.09);
+  border-color: rgba(65, 202, 157, 0.48);
+}
+
+.app-layout .char-item.active-preset.selected {
+  box-shadow: inset 3px 0 0 #41ca9d;
+}
+
+.app-layout .char-sidebar-avatar,
+.app-layout .char-sidebar-avatar-placeholder {
+  background: #252e40;
+  border-color: #39445a;
+}
+
+.app-layout .char-badge,
+.app-layout .mode-badge,
+.app-layout .form-group label {
+  color: var(--ui-text-muted);
+}
+
+.app-layout .char-item.active-preset .char-badge {
+  color: #55d6a5;
+}
+
+.app-layout .active-dot {
+  background: #647087;
+}
+
+.app-layout .char-item.active-preset .active-dot {
+  background: #41ca9d;
+  box-shadow: 0 0 8px rgba(65, 202, 157, 0.55);
+}
+
+.app-layout .btn-quick-play {
+  background: #2a3448;
+  color: #e8ebf4;
+}
+
+.app-layout .btn-quick-play:hover {
+  background: var(--ui-accent);
+  color: #fff;
+}
+
+.app-layout .main-content {
+  background: radial-gradient(ellipse at 80% -18%, rgba(91, 76, 174, 0.12), transparent 42%), var(--ui-bg-main);
+  scrollbar-color: #3a455b transparent;
+}
+
+.app-layout .editor-grid,
+.app-layout .settings-grid {
+  background: transparent;
+}
+
+.app-layout .card {
+  background: linear-gradient(155deg, #192231 0%, #151d29 100%);
+  border-color: var(--ui-border);
+  border-radius: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.app-layout .card h2 {
+  border-bottom-color: var(--ui-border);
+}
+
+.app-layout .card h3 {
+  color: #dce2ef;
+}
+
+.app-layout .hint-text {
+  color: var(--ui-text-soft);
+}
+
+.app-layout input[type="text"],
+.app-layout input[type="password"],
+.app-layout input[type="number"],
+.app-layout select,
+.app-layout textarea {
+  color: var(--ui-text);
+  background: var(--ui-bg-input);
+  border-color: #303b50;
+  border-radius: 8px;
+}
+
+.app-layout input[type="text"]::placeholder,
+.app-layout input[type="password"]::placeholder,
+.app-layout input[type="number"]::placeholder,
+.app-layout textarea::placeholder {
+  color: #68758b;
+  opacity: 1;
+}
+
+.app-layout input[type="text"]:hover,
+.app-layout input[type="password"]:hover,
+.app-layout input[type="number"]:hover,
+.app-layout select:hover,
+.app-layout textarea:hover {
+  border-color: #46536c;
+}
+
+.app-layout input[type="text"]:focus,
+.app-layout input[type="password"]:focus,
+.app-layout input[type="number"]:focus,
+.app-layout textarea:focus,
+.app-layout select:focus {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 3px rgba(136, 120, 245, 0.14);
+}
+
+.app-layout input[type="text"]:disabled,
+.app-layout input[type="password"]:disabled,
+.app-layout input[type="number"]:disabled,
+.app-layout select:disabled,
+.app-layout textarea:disabled {
+  background: #151c28;
+  color: #77839a;
+  border-color: #283245;
+  cursor: not-allowed;
+}
+
+.app-layout input[type="checkbox"],
+.app-layout input[type="range"] {
+  accent-color: var(--ui-accent);
+}
+
+.app-layout input[type="color"] {
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--ui-bg-input);
+}
+
+.app-layout input[type="file"] {
+  color: var(--ui-text-muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.app-layout input[type="file"]::file-selector-button {
+  margin-right: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 7px;
+  color: var(--ui-text);
+  background: var(--ui-bg-raised);
+  cursor: pointer;
+}
+
+.app-layout input[type="file"]::file-selector-button:hover {
+  border-color: var(--ui-accent-border);
+  background: #29334a;
+}
+
+.app-layout .btn {
+  border-radius: 8px;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+
+.app-layout .btn:focus-visible,
+.app-layout .nav-tab-btn:focus-visible,
+.app-layout .btn-quick-play:focus-visible,
+.app-layout .btn-toggle-password:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.app-layout .btn-primary {
+  background: linear-gradient(135deg, #8c7cf5, #6658d5);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(105, 88, 213, 0.2);
+}
+
+.app-layout .btn-primary:hover {
+  background: linear-gradient(135deg, #9a8cff, #7567e6);
+  box-shadow: 0 4px 14px rgba(105, 88, 213, 0.28);
+}
+
+.app-layout .btn-secondary {
+  background: #222d40;
+  color: #dce2ef;
+  border: 1px solid #354158;
+}
+
+.app-layout .btn-secondary:hover {
+  background: #2b3850;
+  border-color: #53617d;
+}
+
+.app-layout .btn-success {
+  background: #168b6b;
+  color: #fff;
+}
+
+.app-layout .btn-success:hover {
+  background: #1ba17b;
+}
+
+.app-layout .btn-danger {
+  background: #a83e52;
+  color: #fff;
+}
+
+.app-layout .btn-danger:hover {
+  background: #c04a60;
+}
+
+.app-layout .btn:disabled {
+  opacity: 0.48;
+  box-shadow: none;
+}
+
+.app-layout .btn-toggle-password {
+  color: #9ba6ba;
+}
+
+.app-layout .btn-toggle-password:hover {
+  color: #d9d4ff;
+}
+
+.app-layout .checkbox-label {
+  color: #dce2ef;
+}
+
+.app-layout .recording-box {
+  background: rgba(239, 68, 68, 0.09);
+  border-color: rgba(239, 91, 109, 0.75);
+}
+
+.app-layout .telegram-box {
+  background: rgba(136, 120, 245, 0.08);
+  border-color: var(--ui-accent-border);
+}
+
+.app-layout .tg-label,
+.app-layout .snippet-header {
+  color: #b5aaff;
+}
+
+.app-layout .stitcher-box,
+.app-layout .waveform-box,
+.app-layout .snippet-box {
+  background: #121a27;
+  border-color: var(--ui-border);
+}
+
+.app-layout .stitcher-header {
+  color: var(--ui-text-muted);
+}
+
+.app-layout .stitcher-item {
+  background: #202a3a;
+  color: #dce2ef;
+}
+
+.app-layout .status-monitor-box {
+  background: #1b2635;
+  border-color: #344158;
+}
+
+.app-layout .badge-online {
+  color: #55d6a5;
+}
+
+.app-layout .badge-offline {
+  color: #98a4b8;
+}
+
+.app-layout .snippet-box pre {
+  background: #0c131e;
+  border-color: #2c374b;
+  color: #dce2ef;
+  scrollbar-color: #3a455b transparent;
+}
+
+.app-layout .snippet-box code {
+  color: #d7deeb;
+}
+
+.app-layout .divider {
+  background: var(--ui-border);
+}
+
+.app-layout .audio-box audio {
+  color-scheme: dark;
+}
+
+.app-layout .btn-remove-item,
+.app-layout .btn-remove-phrase {
+  color: #f07887;
+}
+
+.app-layout .btn-remove-item:hover,
+.app-layout .btn-remove-phrase:hover {
+  color: #ff9aa5;
+}
+
+.app-layout .app-layout a,
+.app-layout a {
+  color: #a99cff;
+}
+
+.app-layout a:hover {
+  color: #c5bcff;
+}
+
+.app-layout ::selection {
+  color: #fff;
+  background: rgba(136, 120, 245, 0.35);
+}
+
+.app-layout * {
+  scrollbar-width: thin;
+  scrollbar-color: #3a455b transparent;
+}
+
+.app-layout *::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.app-layout *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-layout *::-webkit-scrollbar-thumb {
+  background: #303b50;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background-clip: padding-box;
+}
+
+.app-layout *::-webkit-scrollbar-thumb:hover {
+  background: #53617d;
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-layout .btn,
+  .app-layout .nav-tab-btn,
+  .app-layout .char-item {
+    transition: none;
+  }
+}

@@ -205,12 +205,10 @@ function addStartupLines(content) {
             continue;
         }
         if (!rawLine.trim()) {
-            startupCosyVoiceSourceCandidate = null;
             startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
             continue;
         }
         if (/^[ \t]/.test(rawLine) && startupLastEvent) {
-            startupCosyVoiceSourceCandidate = null;
             const previousLevel = startupLastEvent.level;
             startupLastEvent.message += "\n" + rawLine;
 

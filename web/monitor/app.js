@@ -14,6 +14,7 @@ let startupEncoder = new TextEncoder();
 let startupBuffer = "";
 let startupBufferOffset = 0;
 let startupLastEvent = null;
+let startupCosyVoiceSourceCandidate = null;
 
 const timeText = value => {
     const date = new Date(value);
@@ -178,6 +179,28 @@ function startupLevel(message) {
     return "info";
 }
 
+function isCosyVoiceAmpSource(message) {
+    return /cosyvoice[\\/]+cli[\\/]+model\.py:\d+/i.test(message);
+}
+
+function isCosyVoiceAmpFutureWarning(message) {
+    return /FutureWarning/i.test(message) &&
+        /torch\.cuda\.amp\.autocast/i.test(message);
+}
+
+function setStartupEventLevel(event, level) {
+    const previousLevel = event.level;
+    if (previousLevel === level) return;
+    if (counts[previousLevel] !== undefined && counts[level] !== undefined) {
+        counts[previousLevel]--;
+        counts[level]++;
+        $(previousLevel === "warning" ? "warningCount" : previousLevel + "Count").textContent = counts[previousLevel];
+        $(level === "warning" ? "warningCount" : level + "Count").textContent = counts[level];
+    }
+    event.level = level;
+    renderLogs();
+}
+
 function addStartupLines(content) {
     startupBuffer += content;
     let newlineIndex;
@@ -192,7 +215,9 @@ function addStartupLines(content) {
         if (/^[ \t]/.test(rawLine) && startupLastEvent) {
             const previousLevel = startupLastEvent.level;
             startupLastEvent.message += "\n" + rawLine;
-            const nextLevel = startupLevel(startupLastEvent.message);
+            const nextLevel = startupLastEvent.suppressWarningClassification
+                ? "info"
+                : startupLevel(startupLastEvent.message);
             if (nextLevel !== previousLevel) {
                 counts[previousLevel]--;
                 counts[nextLevel]++;
@@ -206,16 +231,28 @@ function addStartupLines(content) {
         }
         const lineOffset = startupBufferOffset;
         const match = rawLine.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+)\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+(.*)$/);
+        let suppressCosyVoiceAmpWarning = false;
+        if (startupCosyVoiceSourceCandidate) {
+            suppressCosyVoiceAmpWarning = isCosyVoiceAmpFutureWarning(rawLine);
+            if (suppressCosyVoiceAmpWarning) {
+                setStartupEventLevel(startupCosyVoiceSourceCandidate, "info");
+            }
+            startupCosyVoiceSourceCandidate = null;
+        }
         const event = {
             event_id: "startup:" + lineOffset,
             type: "log",
-            level: startupLevel(rawLine),
+            level: suppressCosyVoiceAmpWarning ? "info" : startupLevel(rawLine),
             logger: "startup",
             timestamp: match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString(),
-            message: match ? match[3] : rawLine.trim()
+            message: match ? match[3] : rawLine.trim(),
+            suppressWarningClassification: suppressCosyVoiceAmpWarning
         };
         handleEvent(event);
         startupLastEvent = event;
+        if (isCosyVoiceAmpSource(rawLine)) {
+            startupCosyVoiceSourceCandidate = event;
+        }
         startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
     }
 }

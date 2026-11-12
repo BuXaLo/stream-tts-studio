@@ -195,8 +195,8 @@ function initScriptGenerator() {
     const charId = charSelect ? charSelect.value.trim() : "";
     const charArg = charId ? `,\\"character\\":\\"${charId}\\"` : "";
     const serverUrl = getServerSpeakUrl();
-    const serverPort = (serverUrl.match(/:(\\d+)\\/speak$/) || [])[1] || '8765';
-    const primaryServerUrl = serverUrl.replace(/\\/speak$/, '');
+    const serverPort = (serverUrl.match(/:(\d+)\/speak$/) || [])[1] || '8765';
+    const primaryServerUrl = serverUrl.replace(/\/speak$/, '');
     const secondaryServerUrl = 'http://192.168.1.111:' + serverPort;
     const serverUrls = { primary: primaryServerUrl, secondary: secondaryServerUrl };
     let code = "";
@@ -300,7 +300,6 @@ public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private static int alertFileIndex = 0;
 
     public bool Execute()
@@ -378,7 +377,6 @@ public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private static int alertFileIndex = 0;
     private static readonly Random random = new Random();
 

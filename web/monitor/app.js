@@ -15,6 +15,7 @@ let startupBuffer = "";
 let startupBufferOffset = 0;
 let startupLastEvent = null;
 let startupCosyVoiceSourceCandidate = null;
+let startupSuppressCosyVoiceContinuation = false;
 
 const timeText = value => {
     const date = new Date(value);
@@ -184,7 +185,8 @@ function isCosyVoiceAmpSource(message) {
 }
 
 function isCosyVoiceAmpFutureWarning(message) {
-    return /FutureWarning/i.test(message) &&
+    return /cosyvoice[\\/]+cli[\\/]+model\.py:\d+/i.test(message) &&
+        /FutureWarning/i.test(message) &&
         /torch\.cuda\.amp\.autocast/i.test(message);
 }
 
@@ -208,6 +210,18 @@ function addStartupLines(content) {
         const rawWithEnding = startupBuffer.slice(0, newlineIndex + 1);
         startupBuffer = startupBuffer.slice(newlineIndex + 1);
         const rawLine = rawWithEnding.replace(/\r?\n$/, "");
+        if (startupSuppressCosyVoiceContinuation) {
+            if (/^[ \t]/.test(rawLine)) {
+                startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+                continue;
+            }
+            startupSuppressCosyVoiceContinuation = false;
+        }
+        if (isCosyVoiceAmpFutureWarning(rawLine)) {
+            startupSuppressCosyVoiceContinuation = true;
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
         if (!rawLine.trim()) {
             startupCosyVoiceSourceCandidate = null;
             startupBufferOffset += startupEncoder.encode(rawWithEnding).length;

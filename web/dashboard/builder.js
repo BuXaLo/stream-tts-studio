@@ -144,14 +144,14 @@ function initScriptGenerator() {
     res += '    private static readonly string[] ServerUrls = { "' + serverUrls.primary + '", "' + serverUrls.secondary + '" };\n';
     res += '    private const int CacheSeconds = 30;\n';
     res += '    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };\n';
-    res += '\n    private byte[] RequestWav(string json)\n    {\n        for (int attempt = 0; attempt < 2; attempt++)\n        {\n            string baseUrl = ResolveServer(attempt > 0);\n            if (baseUrl == null) return null;\n            try\n            {\n                var content = new StringContent(json, Encoding.UTF8, "application/json");\n                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();\n                if (!response.IsSuccessStatusCode)\n                {\n                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");\n                    return null;\n                }\n                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();\n                return wav.Length < 1000 ? null : wav;\n            }\n            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }\n            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }\n        }\n        return null;\n    }\n';
+    res += '\n    private byte[] RequestWav(string json)\n    {\n        for (int attempt = 0; attempt < 2; attempt++)\n        {\n            string baseUrl = ResolveServer(attempt > 0);\n            if (baseUrl == null) return null;\n            try\n            {\n                var content = new StringContent(json, Encoding.UTF8, "application/json");\n                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();\n                if (!response.IsSuccessStatusCode)\n                {\n                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");\n                    return null; // сервер жив, но отказал: не перебираем\n                }\n                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();\n                return wav.Length < 1000 ? null : wav;\n            }\n            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }\n            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }\n        }\n        return null;\n    }\n';
     res += '\n    private string ResolveServer(bool force)\n    {\n        if (!force)\n        {\n            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);\n            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);\n            if (!string.IsNullOrEmpty(cached) && Array.IndexOf(ServerUrls, cached) >= 0 && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)\n                return cached;\n        }\n\n        foreach (string baseUrl in ServerUrls)\n        {\n            try\n            {\n                var response = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();\n                if (response.IsSuccessStatusCode)\n                {\n                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);\n                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);\n                    return baseUrl;\n                }\n            }\n            catch { }\n        }\n        return null;\n    }\n';
 
     res += "\n    private static string EscapeJson(string s) => s.Replace(\"\\\\\", \"\\\\\\\\\").Replace(\"\\\"\", \"\\\\\\\"\").Replace(\"\\r\", \"\\\\r\").Replace(\"\\n\", \"\\\\n\");\n";
 
     res += "\n    private static string CleanForTTS(string s)\n";
     res += "    {\n";
-    res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}\", \"\");\n";
+    res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}|[\\u200D\\uFE0F\\u20E3]\", \"\");\n";
     res += "        s = Regex.Replace(s, @\"[\\*\"\"`_#\\[\\]\\(\\)<>~]\", \"\");\n";
     res += "        return Regex.Replace(s, @\"\\s+\", \" \").Trim();\n";
     res += "    }\n";
@@ -337,7 +337,11 @@ public class CPHInline
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
             byte[] wav = RequestWav(json);
-            if (wav == null) return false;
+            if (wav == null)
+            {
+                CPH.LogError("DONATION: TTS-студия недоступна, донат не озвучен.");
+                return false;
+            }
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "donate_" + alertFileIndex + ".wav");
@@ -419,7 +423,11 @@ ${phrasesCode}
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
             byte[] wav = RequestWav(json);
-            if (wav == null) return false;
+            if (wav == null)
+            {
+                CPH.LogError("${type.toUpperCase()}: TTS-студия недоступна.");
+                return false;
+            }
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "${type}_" + alertFileIndex + ".wav");

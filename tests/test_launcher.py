@@ -96,7 +96,7 @@ def test_monitor_resumes_startup_log_collection_for_each_backend_cycle():
     assert "if (launcherMode) await finishStartupCollection();" in source
     assert "finally {\n        if (launcherMode) launcherStopRequestInProgress = false;" in source
     assert 'startupCollectionActive = true;\n        daStartupState = "unknown";\n        daStartupConnectedMessageSeen = false;' in source
-    assert 'if (launcherMode) startupCollectionActive = true;' in source
+    assert 'if (launcherMode) {\n        startupCollectionActive = true;\n        launcherStopRequestInProgress = true;\n    }' in source
     assert 'if (launcherMode) startupCollectionActive = false;' in source
     assert source.count("startupOffset = 0;") == 1
     assert "logs.length = 0" not in source

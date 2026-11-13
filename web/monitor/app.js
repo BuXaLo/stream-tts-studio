@@ -289,6 +289,16 @@ function addStartupLines(content) {
     }
 }
 
+async function finishStartupCollection() {
+    await readStartupLog();
+    addStartupLines(startupDecoder.decode());
+    if (startupBuffer.length) {
+        addStartupLines("\n");
+        startupBufferOffset--;
+    }
+    startupCollectionActive = false;
+}
+
 async function readStartupLog() {
     const response = await fetch("/startup-log?offset=" + startupOffset, { cache: "no-store" });
     if (!response.ok) throw new Error("Не удалось получить startup-журнал");
@@ -328,17 +338,16 @@ async function pollLauncher() {
             const startupComplete = daStartupState === "disabled" ||
                 (daStartupState === "connected" && daStartupConnectedMessageSeen);
             if (startupCollectionActive && startupComplete) {
-                await readStartupLog();
-                addStartupLines(startupDecoder.decode());
-                if (startupBuffer.length) addStartupLines("\n");
-                startupCollectionActive = false;
+                await finishStartupCollection();
             }
         } else if (status.status === "error") {
+            if (startupCollectionActive) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("error");
             $("connectionText").textContent = status.detail || "Ошибка запуска backend";
             $("connectionDot").parentElement.className = "status disconnected";
         } else if (status.status === "stopped") {
+            if (startupCollectionActive) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("stopped");
             $("connectionText").textContent = "Студия остановлена";
@@ -363,6 +372,9 @@ document.querySelectorAll("[data-filter]").forEach(button => button.addEventList
 
 $("shutdownButton").addEventListener("click", async () => {
     if (launcherMode && !backendActive) {
+        startupCollectionActive = true;
+        daStartupState = "unknown";
+        daStartupConnectedMessageSeen = false;
         $("shutdownButton").disabled = true;
         $("shutdownButton").textContent = "Запуск студии…";
         try {
@@ -383,12 +395,14 @@ $("shutdownButton").addEventListener("click", async () => {
     $("shutdownButton").disabled = true;
     $("shutdownButton").textContent = "Выключение…";
     shutdownRequested = true;
+    if (launcherMode) startupCollectionActive = true;
     try {
         const shutdownUrl = launcherMode ? "/launcher-stop" : location.origin + "/api/monitor/shutdown";
         const response = await fetch(shutdownUrl, { method: "POST" });
         if (!response.ok) throw new Error("HTTP " + response.status);
         $("connectionText").textContent = "Студия выключается";
     } catch (error) {
+        if (launcherMode) startupCollectionActive = false;
         alert("Не удалось выключить студию: " + error.message);
         shutdownRequested = false;
         setLauncherButton("ready");

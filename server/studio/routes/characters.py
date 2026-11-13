@@ -163,6 +163,9 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         with get_file_lock(presets_file):
             presets = load_presets()
             if char_id not in presets:
+            char_dir = os.path.join(characters_dir, char_id)
+            if os.path.exists(char_dir):
+                shutil.rmtree(char_dir, ignore_errors=True)
                 return {"status": "ok"}
             del presets[char_id]
             save_presets(presets)
@@ -170,9 +173,6 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
                 if get_active_character_id() == char_id:
                     set_active_character_id(list(presets.keys())[0] if presets else "")
                     
-        char_dir = os.path.join(characters_dir, char_id)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir, ignore_errors=True)
         return {"status": "ok"}
         
     

@@ -169,7 +169,7 @@ function initScriptGenerator() {
         res += "\n    private static string CleanForTTS(string s)\n";
         res += "    {\n";
     res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}|[\\u200D\\uFE0F\\u20E3]\", \"\");\n";
-        res += "        s = Regex.Replace(s, @\"[\\*\\\"`\\_\\#\\[\\]\\(\\)<>~]\", \"\");\n";
+    res += "        s = Regex.Replace(s, @\"[\\*\"\"`_#\\[\\]\\(\\)<>~]\", \"\");\n";
         res += "        return Regex.Replace(s, @\"\\s+\", \" \").Trim();\n";
         res += "    }\n";
 

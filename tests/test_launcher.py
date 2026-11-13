@@ -90,7 +90,11 @@ def test_monitor_resumes_startup_log_collection_for_each_backend_cycle():
     source = monitor.read_text(encoding="utf-8")
 
     assert "async function finishStartupCollection()" in source
-    assert "if (startupCollectionActive) await finishStartupCollection();" in source
+    assert "let launcherStopRequestInProgress = false;" in source
+    assert "startupComplete && !launcherStopRequestInProgress && !shutdownRequested" in source
+    assert "startupCollectionActive && !launcherStopRequestInProgress" in source
+    assert "if (launcherMode) await finishStartupCollection();" in source
+    assert "finally {\n        if (launcherMode) launcherStopRequestInProgress = false;" in source
     assert 'startupCollectionActive = true;\n        daStartupState = "unknown";\n        daStartupConnectedMessageSeen = false;' in source
     assert 'if (launcherMode) startupCollectionActive = true;' in source
     assert 'if (launcherMode) startupCollectionActive = false;' in source

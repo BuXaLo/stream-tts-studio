@@ -83,3 +83,17 @@ def test_startup_log_offset_returns_only_appended_bytes(tmp_path, monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+
+def test_monitor_resumes_startup_log_collection_for_each_backend_cycle():
+    monitor = Path(__file__).resolve().parents[1] / "web" / "monitor" / "app.js"
+    source = monitor.read_text(encoding="utf-8")
+
+    assert "async function finishStartupCollection()" in source
+    assert "if (startupCollectionActive) await finishStartupCollection();" in source
+    assert 'startupCollectionActive = true;\n        daStartupState = "unknown";\n        daStartupConnectedMessageSeen = false;' in source
+    assert 'if (launcherMode) startupCollectionActive = true;' in source
+    assert 'if (launcherMode) startupCollectionActive = false;' in source
+    assert source.count("startupOffset = 0;") == 1
+    assert "logs.length = 0" not in source
+    assert "seenEvents.clear()" not in source

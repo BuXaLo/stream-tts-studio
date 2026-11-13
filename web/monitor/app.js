@@ -13,6 +13,7 @@ let daStartupState = "unknown";
 let startupCollectionActive = true;
 let daStartupConnectedMessageSeen = false;
 let shutdownRequested = false;
+let launcherStopRequestInProgress = false;
 let startupOffset = 0;
 let startupDecoder = new TextDecoder("utf-8");
 let startupEncoder = new TextEncoder();
@@ -337,17 +338,17 @@ async function pollLauncher() {
 
             const startupComplete = daStartupState === "disabled" ||
                 (daStartupState === "connected" && daStartupConnectedMessageSeen);
-            if (startupCollectionActive && startupComplete) {
+            if (startupCollectionActive && startupComplete && !launcherStopRequestInProgress && !shutdownRequested) {
                 await finishStartupCollection();
             }
         } else if (status.status === "error") {
-            if (startupCollectionActive) await finishStartupCollection();
+            if (startupCollectionActive && !launcherStopRequestInProgress) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("error");
             $("connectionText").textContent = status.detail || "Ошибка запуска backend";
             $("connectionDot").parentElement.className = "status disconnected";
         } else if (status.status === "stopped") {
-            if (startupCollectionActive) await finishStartupCollection();
+            if (startupCollectionActive && !launcherStopRequestInProgress) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("stopped");
             $("connectionText").textContent = "Студия остановлена";
@@ -395,17 +396,23 @@ $("shutdownButton").addEventListener("click", async () => {
     $("shutdownButton").disabled = true;
     $("shutdownButton").textContent = "Выключение…";
     shutdownRequested = true;
-    if (launcherMode) startupCollectionActive = true;
+    if (launcherMode) {
+        startupCollectionActive = true;
+        launcherStopRequestInProgress = true;
+    }
     try {
         const shutdownUrl = launcherMode ? "/launcher-stop" : location.origin + "/api/monitor/shutdown";
         const response = await fetch(shutdownUrl, { method: "POST" });
         if (!response.ok) throw new Error("HTTP " + response.status);
+        if (launcherMode) await finishStartupCollection();
         $("connectionText").textContent = "Студия выключается";
     } catch (error) {
         if (launcherMode) startupCollectionActive = false;
         alert("Не удалось выключить студию: " + error.message);
         shutdownRequested = false;
         setLauncherButton("ready");
+    } finally {
+        if (launcherMode) launcherStopRequestInProgress = false;
     }
 });
 

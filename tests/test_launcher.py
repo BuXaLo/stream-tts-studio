@@ -101,3 +101,106 @@ def test_monitor_resumes_startup_log_collection_for_each_backend_cycle():
     assert source.count("startupOffset = 0;") == 1
     assert "logs.length = 0" not in source
     assert "seenEvents.clear()" not in source
+
+def _load_launcher_for_window_tests():
+    launcher_path = Path(__file__).resolve().parents[1] / "server" / "launcher.pyw"
+    loader = importlib.machinery.SourceFileLoader("test_monitor_window_launcher", str(launcher_path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_choose_monitor_mode():
+    module = _load_launcher_for_window_tests()
+
+    mode, reason = module.choose_monitor_mode(" browser ", True, "1.2.3")
+    assert mode == "browser"
+    assert module.MONITOR_WINDOW_ENV in reason
+
+    mode, reason = module.choose_monitor_mode("", False, None)
+    assert mode == "browser"
+    assert "pywebview" in reason
+
+    mode, reason = module.choose_monitor_mode("", True, None)
+    assert mode == "browser"
+    assert "WebView2 Runtime" in reason
+
+    mode, reason = module.choose_monitor_mode("", True, "1.2.3")
+    assert mode == "webview"
+    assert "1.2.3" in reason
+
+
+def test_monitor_window_falls_back_when_webview_start_fails(monkeypatch):
+    from types import SimpleNamespace
+
+    module = _load_launcher_for_window_tests()
+    module.exit_requested.clear()
+    log_messages = []
+    fallback_urls = []
+    monkeypatch.setattr(
+        module, "controller",
+        SimpleNamespace(write_log=log_messages.append)
+    )
+    monkeypatch.setattr(module, "open_monitor_window", fallback_urls.append)
+
+    class BrokenWebView:
+        @staticmethod
+        def create_window(*args, **kwargs):
+            raise RuntimeError("WebView2 initialization failed")
+
+    module.run_webview_monitor(BrokenWebView(), "http://127.0.0.1:1234/", lambda: None)
+
+    assert fallback_urls == ["http://127.0.0.1:1234/"]
+    assert any("Ошибка окна pywebview" in message for message in log_messages)
+    assert module.monitor_window is None
+
+
+def test_monitor_window_falls_back_after_load_timeout(monkeypatch):
+    from types import SimpleNamespace
+
+    module = _load_launcher_for_window_tests()
+    module.exit_requested.clear()
+    monkeypatch.setattr(module, "WINDOW_LOAD_TIMEOUT", 0)
+    fallback_calls = []
+    log_messages = []
+    window = module.MonitorWindow(
+        SimpleNamespace(), "http://127.0.0.1:1234/",
+        log_messages.append, lambda: fallback_calls.append(True), lambda: None
+    )
+    window.window = SimpleNamespace(destroy=lambda: None)
+    # Имитируем ситуацию, когда GUI-поток не завершился даже после destroy().
+    window.finished.wait = lambda timeout=None: False
+
+    window._watch_load()
+
+    assert not window.active
+    assert fallback_calls == [True]
+    assert any("не загрузило монитор" in message for message in log_messages)
+
+    # Повторный сигнал отката не должен открывать второе окно.
+    window.fallback()
+    assert fallback_calls == [True]
+
+
+def test_monitor_window_show_failure_requests_fallback():
+    from types import SimpleNamespace
+
+    module = _load_launcher_for_window_tests()
+    log_messages = []
+
+    class BrokenWindow:
+        @staticmethod
+        def show():
+            raise RuntimeError("window handle is no longer valid")
+
+    window = module.MonitorWindow(
+        SimpleNamespace(), "http://127.0.0.1:1234/",
+        log_messages.append, lambda: None, lambda: None
+    )
+    window.window = BrokenWindow()
+    window.loaded.set()
+
+    assert window.show() is False
+    assert any("Не удалось показать окно монитора" in message for message in log_messages)
+

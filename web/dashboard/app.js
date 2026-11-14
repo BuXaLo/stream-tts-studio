@@ -61,13 +61,92 @@ function switchToCharactersTab() {
   }
 }
 
+// ==================== СЕГМЕНТИРОВАННЫЕ ПЕРЕКЛЮЧАТЕЛИ ====================
+
+function syncSegmentedControlByTarget(targetId) {
+  const control = document.querySelector(`.segmented-control[data-target="${targetId}"]`);
+  const hiddenInput = document.getElementById(targetId);
+  if (!control || !hiddenInput) return;
+
+  const currentVal = String(hiddenInput.value || '');
+  const buttons = Array.from(control.querySelectorAll('.seg-btn'));
+  let matched = false;
+
+  buttons.forEach(btn => {
+    const isMatch = btn.dataset.value === currentVal;
+    btn.classList.toggle('active', isMatch);
+    if (isMatch) matched = true;
+  });
+
+  if (!matched && buttons.length > 0) {
+    buttons[0].classList.add('active');
+  }
+}
+
+function syncAllSegmentedControls() {
+  document.querySelectorAll('.segmented-control[data-target]').forEach(control => {
+    const targetId = control.dataset.target;
+    if (targetId) syncSegmentedControlByTarget(targetId);
+  });
+}
+
+function initSegmentedControls() {
+  const protoDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+  document.querySelectorAll('.segmented-control[data-target]').forEach(control => {
+    if (control._segInitialized) return;
+    control._segInitialized = true;
+
+    const targetId = control.dataset.target;
+    const hiddenInput = document.getElementById(targetId);
+    if (!hiddenInput) return;
+
+    if (protoDesc && protoDesc.get && protoDesc.set && !hiddenInput._segValueHooked) {
+      Object.defineProperty(hiddenInput, 'value', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return protoDesc.get.call(this);
+        },
+        set(val) {
+          protoDesc.set.call(this, val);
+          syncSegmentedControlByTarget(targetId);
+        }
+      });
+      hiddenInput._segValueHooked = true;
+    }
+
+    control.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nextVal = btn.dataset.value;
+        if (hiddenInput.value === nextVal) {
+          syncSegmentedControlByTarget(targetId);
+          return;
+        }
+        hiddenInput.value = nextVal;
+        syncSegmentedControlByTarget(targetId);
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+
+    syncSegmentedControlByTarget(targetId);
+  });
+}
+
+window.StudioUI = Object.assign(window.StudioUI || {}, {
+  initSegmentedControls,
+  syncSegmentedControlByTarget,
+  syncAllSegmentedControls
+});
+
 // ==================== КОНВЕРТЕР AUDIOBUFFER -> WAV BLOB ====================
 function audioBufferToWav(buffer) {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const format = 1; // PCM
   const bitDepth = 16;
-  
+
   let result;
   if (numChannels === 2) {
     const channel1 = buffer.getChannelData(0);
@@ -141,6 +220,8 @@ function getDraftTheme() {
       text_color: document.getElementById('text-color').value,
       name_bg_color: document.getElementById('name-bg-color').value,
       name_text_color: document.getElementById('name-text-color').value,
+      text_stroke_color: document.getElementById('text-stroke-color').value || '#000000',
+      text_stroke_width: parseFloat(document.getElementById('text-stroke-width-slider').value) || 0,
       bg_opacity: parseFloat(document.getElementById('bg-opacity-slider').value),
       hide_delay: parseFloat(document.getElementById('hide-delay-slider').value),
       avatar_position: document.getElementById('avatar-position').value,
@@ -211,6 +292,7 @@ async function loadSystemConfig() {
     const cfg = data.config || {};
 
     document.getElementById('cfg-host').value = cfg.host || '127.0.0.1';
+    syncSegmentedControlByTarget('cfg-host');
     document.getElementById('cfg-port').value = cfg.port || 8765;
     document.getElementById('cfg-timesteps').value = cfg.n_timesteps || 6;
     document.getElementById('cfg-timesteps-val').innerText = `${cfg.n_timesteps || 6} шагов`;
@@ -596,6 +678,7 @@ function renderSidebar() {
 
 async function selectCharacter(id) {
   switchToCharactersTab();
+  if (window.StudioColorPicker) window.StudioColorPicker.close();
 
   if (sidebarAudioPlayer && !sidebarAudioPlayer.paused) {
     sidebarAudioPlayer.pause();
@@ -627,6 +710,13 @@ async function selectCharacter(id) {
   document.getElementById('text-color').value = theme.text_color || '#fcebeb';
   document.getElementById('name-bg-color').value = theme.name_bg_color || '#6366f1';
   document.getElementById('name-text-color').value = theme.name_text_color || '#ffffff';
+  document.getElementById('text-stroke-color').value = theme.text_stroke_color || '#000000';
+  if (window.StudioColorPicker) window.StudioColorPicker.syncAll();
+
+  const strokeWidth = theme.text_stroke_width !== undefined ? parseFloat(theme.text_stroke_width) : 0;
+  document.getElementById('text-stroke-width-slider').value = strokeWidth;
+  document.getElementById('text-stroke-width-val').innerText = `${strokeWidth}px`;
+
   document.getElementById('bg-opacity-slider').value = theme.bg_opacity !== undefined ? theme.bg_opacity : 0.9;
   document.getElementById('bg-opacity-val').innerText = `${Math.round(document.getElementById('bg-opacity-slider').value * 100)}%`;
   document.getElementById('hide-delay-slider').value = theme.hide_delay !== undefined ? theme.hide_delay : 2.0;
@@ -641,6 +731,7 @@ async function selectCharacter(id) {
   document.getElementById('exit-animation').value = theme.exit_animation || 'fade-out';
   document.getElementById('text-animation').value = theme.text_animation || 'typewriter';
   document.getElementById('avatar-position').value = theme.avatar_position || 'left';
+  syncSegmentedControlByTarget('avatar-position');
 
   const btnSetActive = document.getElementById('btn-set-active');
   if (id === activeCharId) {
@@ -702,6 +793,7 @@ function createNewCharacter() {
   }
 
   switchToCharactersTab();
+  if (window.StudioColorPicker) window.StudioColorPicker.close();
 
   isLoadingPreset = true;
   selectedCharId = null;
@@ -721,6 +813,12 @@ function createNewCharacter() {
   document.getElementById('text-color').value = '#fcebeb';
   document.getElementById('name-bg-color').value = '#6366f1';
   document.getElementById('name-text-color').value = '#ffffff';
+  document.getElementById('text-stroke-color').value = '#000000';
+  if (window.StudioColorPicker) window.StudioColorPicker.syncAll();
+
+  document.getElementById('text-stroke-width-slider').value = 0;
+  document.getElementById('text-stroke-width-val').innerText = '0px';
+
   document.getElementById('bg-opacity-slider').value = 0.9;
   document.getElementById('bg-opacity-val').innerText = '90%';
   document.getElementById('hide-delay-slider').value = 2.0;
@@ -735,6 +833,7 @@ function createNewCharacter() {
   document.getElementById('exit-animation').value = 'fade-out';
   document.getElementById('text-animation').value = 'typewriter';
   document.getElementById('avatar-position').value = 'left';
+  syncSegmentedControlByTarget('avatar-position');
 
   const btnSetActive = document.getElementById('btn-set-active');
   btnSetActive.disabled = true;
@@ -771,11 +870,17 @@ function updatePreviews() {
   const tColor = document.getElementById('text-color').value;
   const nBgColor = document.getElementById('name-bg-color').value;
   const nTextColor = document.getElementById('name-text-color').value;
+  const strokeColor = document.getElementById('text-stroke-color').value || '#000000';
+  const rawStrokeWidth = parseFloat(document.getElementById('text-stroke-width-slider').value) || 0;
+  const previewStrokeWidth = rawStrokeWidth > 0
+    ? `${Math.round(rawStrokeWidth * 0.62 * 10) / 10}px`
+    : '0px';
+
   const charName = document.getElementById('char-name').value || 'Персонаж';
   const shape = document.getElementById('box-shape').value;
   const fx = document.getElementById('border-fx').value;
   const fontFamily = document.getElementById('font-family').value;
-  
+
   const rawFontSize = parseInt(document.getElementById('font-size-slider').value, 10) || 22;
   const previewFontSize = `${Math.round(rawFontSize * 0.62)}px`;
   const avatarPos = document.getElementById('avatar-position').value;
@@ -799,6 +904,8 @@ function updatePreviews() {
     staticText.style.color = tColor;
     staticText.style.fontSize = previewFontSize;
     staticText.style.fontFamily = `"${fontFamily}", sans-serif`;
+    staticText.style.setProperty('--text-stroke-color', strokeColor);
+    staticText.style.setProperty('--text-stroke-width', previewStrokeWidth);
   }
 
   const dynBox = document.getElementById('dynamic-dialogue-box');
@@ -819,6 +926,8 @@ function updatePreviews() {
     dynText.style.color = tColor;
     dynText.style.fontSize = previewFontSize;
     dynText.style.fontFamily = `"${fontFamily}", sans-serif`;
+    dynText.style.setProperty('--text-stroke-color', strokeColor);
+    dynText.style.setProperty('--text-stroke-width', previewStrokeWidth);
     if (dynCursor) {
       dynCursor.style.backgroundColor = '';
       dynCursor.style.height = previewFontSize;
@@ -958,6 +1067,11 @@ function runDynamicOverlayPreview(fullText, durationSec = 3.5) {
 // ==================== ОБРАБОТЧИКИ СОБЫТИЙ (DOM) ====================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (window.StudioColorPicker) {
+    window.StudioColorPicker.init();
+  }
+  initSegmentedControls();
+
   await initCustomFonts();
   await loadPresetsList();
   await loadSystemConfig();
@@ -976,6 +1090,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (tabChars && tabSettings) {
     tabChars.addEventListener('click', () => {
+      if (window.StudioColorPicker) window.StudioColorPicker.close();
       tabChars.classList.add('active');
       tabSettings.classList.remove('active');
       viewChars.classList.remove('hidden');
@@ -983,6 +1098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     tabSettings.addEventListener('click', async () => {
+      if (window.StudioColorPicker) window.StudioColorPicker.close();
       tabSettings.classList.add('active');
       tabChars.classList.remove('active');
       viewSettings.classList.remove('hidden');
@@ -1034,7 +1150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const message = typeof detail === 'string'
           ? detail
           : [detail.message, detail.error, detail.status_code ? 'HTTP ' + detail.status_code : '']
-              .filter(Boolean).join('\n');
+            .filter(Boolean).join('\n');
         throw new Error(message || 'Ошибка отправки тестового доната');
       }
       alert('Тестовый донат передан в Streamer.bot. Попыток: ' + (result.result?.attempts ?? 1) + '.');
@@ -1068,7 +1184,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const watchInputs = [
     'char-name', 'border-color', 'bg-color', 'text-color', 'name-bg-color',
-    'name-text-color', 'bg-opacity-slider', 'hide-delay-slider', 'box-shape',
+    'name-text-color', 'text-stroke-color', 'text-stroke-width-slider',
+    'bg-opacity-slider', 'hide-delay-slider', 'box-shape',
     'border-fx', 'font-family', 'font-size-slider', 'entrance-animation',
     'exit-animation', 'text-animation', 'avatar-position', 'ref-text', 'speed-slider'
   ];
@@ -1078,6 +1195,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!el) return;
     el.addEventListener('input', () => {
       setDirty(true);
+      if (id === 'text-stroke-width-slider') {
+        document.getElementById('text-stroke-width-val').innerText = `${parseFloat(el.value)}px`;
+      }
       if (id === 'bg-opacity-slider') {
         document.getElementById('bg-opacity-val').innerText = `${Math.round(el.value * 100)}%`;
       }
@@ -1211,7 +1331,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     for (const f of stitcherFiles) {
       const arr = await f.arrayBuffer();
       const buf = await audioCtx.decodeAudioData(arr);
-      
+
       const offlineCtx = new OfflineAudioContext(1, Math.ceil(buf.duration * targetSampleRate), targetSampleRate);
       const src = offlineCtx.createBufferSource();
       src.buffer = buf;
@@ -1442,6 +1562,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('btn-save-char').addEventListener('click', async () => {
+    if (window.StudioColorPicker) window.StudioColorPicker.close();
+
     const charId = document.getElementById('char-id').value.trim();
     const charName = document.getElementById('char-name').value.trim();
     const refText = document.getElementById('ref-text').value.trim();
@@ -1467,6 +1589,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       text_color: document.getElementById('text-color').value,
       name_bg_color: document.getElementById('name-bg-color').value,
       name_text_color: document.getElementById('name-text-color').value,
+      text_stroke_color: document.getElementById('text-stroke-color').value || '#000000',
+      text_stroke_width: parseFloat(document.getElementById('text-stroke-width-slider').value) || 0,
       bg_opacity: parseFloat(document.getElementById('bg-opacity-slider').value),
       hide_delay: parseFloat(document.getElementById('hide-delay-slider').value),
       avatar_position: document.getElementById('avatar-position').value,

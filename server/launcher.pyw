@@ -5,6 +5,7 @@ from ctypes import wintypes
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -22,12 +23,23 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "startup.log")
 APP_FILE = os.path.join(SERVER_DIR, "app.py")
 PYTHON_EXE = os.path.join(BASE_DIR, "cosyvoice3", "upy", "python.exe")
+
+# Собственное окно монитора (pywebview + WebView2). Если оно недоступно,
+# launcher работает как раньше: Edge с --app=, иначе браузер по умолчанию.
+MONITOR_WINDOW_ENV = "STUDIO_MONITOR_WINDOW"  # значение "browser" отключает pywebview
+WINDOW_TITLE = "TTS Studio — Монитор"
+WINDOW_BACKGROUND = "#0b0d12"
+WINDOW_LOAD_TIMEOUT = 25  # секунд на первую загрузку страницы монитора
+WINDOW_EXIT_GRACE = 20    # секунд на закрытие окна при выходе
+APP_USER_MODEL_ID = "StreamTTSStudio.Monitor"
+WEBVIEW2_CLIENT_GUID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 os.makedirs(LOG_DIR, exist_ok=True)
 
 state = {"status": "starting", "backend_url": "", "detail": "", "pid": None, "exit_code": None}
 state_lock = threading.RLock()
 exit_requested = threading.Event()
 controller = None
+monitor_window = None
 _singleton_handle = None
 
 
@@ -509,7 +521,278 @@ class Win32TrayIcon:
         open_monitor_window(self.monitor_url)
 
 
+def webview2_runtime_version():
+    """Версия WebView2 Runtime из реестра (только чтение) или None."""
+    try:
+        import winreg
+    except ImportError:
+        return None
+    candidates = (
+        (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{}"),
+        (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{}"),
+        (winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\EdgeUpdate\\Clients\\{}"),
+    )
+    for root, template in candidates:
+        try:
+            with winreg.OpenKey(root, template.format(WEBVIEW2_CLIENT_GUID)) as key:
+                value, _ = winreg.QueryValueEx(key, "pv")
+        except OSError:
+            continue
+        value = str(value).strip()
+        if value and value != "0.0.0.0":
+            return value
+    return None
+
+
+def import_webview():
+    """Ленивый импорт pywebview: (модуль, None) или (None, текст ошибки)."""
+    try:
+        import webview
+        return webview, None
+    except Exception:
+        return None, traceback.format_exc()
+
+
+def choose_monitor_mode(env_value, webview_available, runtime_version):
+    """Возвращает (режим, причина); режим: "webview" или "browser"."""
+    if str(env_value or "").strip().lower() == "browser":
+        return "browser", "{}=browser".format(MONITOR_WINDOW_ENV)
+    if not webview_available:
+        return "browser", "пакет pywebview не импортируется"
+    if not runtime_version:
+        return "browser", "WebView2 Runtime не найден в реестре"
+    return "webview", "pywebview + WebView2 {}".format(runtime_version)
+
+
+def select_monitor_mode(log):
+    env_value = os.environ.get(MONITOR_WINDOW_ENV, "")
+    webview_module, import_error = (None, None)
+    if str(env_value).strip().lower() != "browser":
+        webview_module, import_error = import_webview()
+    runtime_version = webview2_runtime_version() if webview_module is not None else None
+    mode, reason = choose_monitor_mode(env_value, webview_module is not None, runtime_version)
+    if import_error:
+        log("Импорт pywebview не удался:\n{}".format(import_error))
+    if mode == "webview":
+        try:
+            from importlib import metadata
+            version = metadata.version("pywebview")
+        except Exception:
+            version = "?"
+        log("Режим окна монитора: pywebview {} ({}).".format(version, reason))
+    else:
+        log("Режим окна монитора: Edge/браузер ({}).".format(reason))
+    return mode, webview_module
+
+
+def _user32():
+    user32 = ctypes.windll.user32
+    user32.LoadImageW.argtypes = [
+        wintypes.HANDLE, wintypes.LPCWSTR, wintypes.UINT,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT
+    ]
+    user32.LoadImageW.restype = wintypes.HANDLE
+    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+    user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+    user32.GetSystemMetrics.restype = ctypes.c_int
+    user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowW.restype = wintypes.HWND
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
+    return user32
+
+
+def set_app_user_model_id():
+    """Чтобы в панели задач был значок студии, а не pythonw.exe."""
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(ctypes.c_wchar_p(APP_USER_MODEL_ID))
+    except Exception:
+        pass
+
+
+def find_window_handle(window):
+    """HWND окна pywebview: через window.native, запасной путь — по заголовку."""
+    try:
+        handle = window.native.Handle
+        value = int(handle.ToInt64())
+        if value:
+            return value
+    except Exception:
+        pass
+    try:
+        return _user32().FindWindowW(None, WINDOW_TITLE) or None
+    except Exception:
+        return None
+
+
+def apply_window_icon(hwnd):
+    """Иконка окна из web/dashboard/favicon.ico (та же, что у трея)."""
+    user32 = _user32()
+    # (wParam для WM_SETICON, метрика ширины, метрика высоты): большая и малая иконки
+    for icon_kind, cx_metric, cy_metric in ((1, 11, 12), (0, 49, 50)):
+        icon = user32.LoadImageW(
+            None, ICON_FILE, 1,
+            user32.GetSystemMetrics(cx_metric), user32.GetSystemMetrics(cy_metric), 0x0010
+        )
+        if icon:
+            user32.SendMessageW(hwnd, 0x0080, icon_kind, icon)
+
+
+def bring_window_to_front(hwnd):
+    user32 = _user32()
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+
+
+class MonitorWindow:
+    """Окно монитора на pywebview. Один экземпляр на сеанс launcher.
+
+    Крестик скрывает окно (backend продолжает работать), «Открыть монитор» в трее
+    возвращает то же окно, «Выход» закрывает его по-настоящему.
+    """
+
+    def __init__(self, webview_module, url, log, open_fallback, force_exit):
+        self.webview = webview_module
+        self.url = url
+        self.log = log
+        self.open_fallback = open_fallback
+        self.force_exit = force_exit
+        self.window = None
+        self.hwnd = None
+        self.active = True
+        self.loaded = threading.Event()
+        self.finished = threading.Event()
+        self.allow_close = threading.Event()
+        self._fallback_done = False
+        self._lock = threading.Lock()
+
+    def run(self):
+        """Блокирует главный поток до закрытия окна. Исключение значит сбой запуска."""
+        set_app_user_model_id()
+        try:
+            self.window = self.webview.create_window(
+                WINDOW_TITLE, url=self.url, width=1280, height=820, min_size=(900, 600),
+                background_color=WINDOW_BACKGROUND, text_select=True
+            )
+            self.window.events.closing += self._on_closing
+            self.window.events.loaded += self._on_loaded
+            self.window.events.shown += self._on_shown
+            threading.Thread(target=self._watch_exit, name="monitor-window-exit", daemon=True).start()
+            threading.Thread(target=self._watch_load, name="monitor-window-load", daemon=True).start()
+            # gui задан явно: иначе pywebview может молча уйти на старый движок MSHTML.
+            self.webview.start(gui="edgechromium")
+        finally:
+            self.finished.set()
+
+    def _on_loaded(self):
+        self.loaded.set()
+
+    def _on_shown(self):
+        try:
+            self.hwnd = find_window_handle(self.window)
+            if self.hwnd:
+                apply_window_icon(self.hwnd)
+        except Exception as exc:
+            self.log("Не удалось установить иконку окна монитора: {}".format(exc))
+
+    def _on_closing(self):
+        if self.allow_close.is_set() or exit_requested.is_set():
+            return True
+        self.log("Окно монитора скрыто (закрытие окна не останавливает backend).")
+        # hide() вызываем вне обработчика события, чтобы не словить взаимную блокировку.
+        threading.Thread(target=self._hide, name="monitor-window-hide", daemon=True).start()
+        return False
+
+    def _hide(self):
+        try:
+            self.window.hide()
+        except Exception as exc:
+            self.log("Не удалось скрыть окно монитора: {}".format(exc))
+
+    def show(self):
+        """Показать окно. False, если окна нет и нужен запасной режим."""
+        if not self.active:
+            return False
+        if self.window is None or not self.loaded.is_set():
+            return True  # окно ещё запускается и уже видно
+        try:
+            self.window.show()
+            hwnd = self.hwnd or find_window_handle(self.window)
+            if hwnd:
+                bring_window_to_front(hwnd)
+        except Exception as exc:
+            self.log("Не удалось показать окно монитора: {}".format(exc))
+            return False
+        return True
+
+    def destroy(self):
+        self.allow_close.set()
+        try:
+            if self.window is not None:
+                self.window.destroy()
+        except Exception as exc:
+            self.log("Не удалось закрыть окно монитора: {}".format(exc))
+
+    def fallback(self):
+        """Один раз открыть запасной монитор (Edge/браузер)."""
+        with self._lock:
+            if self._fallback_done:
+                return
+            self._fallback_done = True
+            self.active = False
+        self.open_fallback()
+
+    def _watch_exit(self):
+        exit_requested.wait()
+        self.destroy()
+        if not self.finished.wait(WINDOW_EXIT_GRACE):
+            self.log("Окно монитора не закрылось за {} с. Принудительное завершение.".format(WINDOW_EXIT_GRACE))
+            self.force_exit()
+
+    def _watch_load(self):
+        if self.loaded.wait(WINDOW_LOAD_TIMEOUT) or exit_requested.is_set() or self.finished.is_set():
+            return
+        self.log("Окно pywebview не загрузило монитор за {} с. Запасной режим.".format(WINDOW_LOAD_TIMEOUT))
+        self.destroy()
+        if not self.finished.wait(10):
+            self.fallback()
+
+
+def run_webview_monitor(webview_module, monitor_url, force_exit):
+    """Окно pywebview в главном потоке. При сбое включает запасной монитор."""
+    global monitor_window
+    window = MonitorWindow(
+        webview_module, monitor_url, controller.write_log,
+        lambda: open_monitor_window(monitor_url), force_exit
+    )
+    monitor_window = window
+    try:
+        window.run()
+    except Exception:
+        controller.write_log("Ошибка окна pywebview:\n{}".format(traceback.format_exc()))
+    finally:
+        window.active = False
+        monitor_window = None
+    if exit_requested.is_set():
+        return
+    controller.write_log("Окно pywebview недоступно. Запасной режим: монитор в Edge/браузере.")
+    window.fallback()
+
+
+def supervise_until_exit():
+    while not exit_requested.wait(0.5):
+        controller.refresh()
+
+
 def open_monitor_window(url):
+    if monitor_window is not None and monitor_window.show():
+        return
     edge_candidates = [
         os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
         os.path.join(os.environ.get("PROGRAMFILES", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
@@ -590,8 +873,14 @@ def main():
         if not os.path.isfile(required):
             raise FileNotFoundError(message.format(required))
 
+    original_stdout, original_stderr = sys.stdout, sys.stderr
     with open(LOG_FILE, "w", encoding="utf-8", buffering=1) as log_stream:
         log_stream.write("[{}] Запуск TTS Studio Monitor\n".format(datetime.now().astimezone().isoformat(timespec="seconds")))
+        # pythonw.exe работает без консоли: sys.stdout/sys.stderr равны None.
+        if sys.stdout is None:
+            sys.stdout = log_stream
+        if sys.stderr is None:
+            sys.stderr = log_stream
         log_stream.write("Python: {}\n".format(PYTHON_EXE))
         log_stream.write("Entry point: {}\n".format(APP_FILE))
         http_server = ThreadingHTTPServer(("127.0.0.1", 0), MonitorLauncherHandler)
@@ -602,23 +891,40 @@ def main():
         _, _, backend_url = backend_address()
         controller = LauncherController(backend_url, monitor_port, log_stream)
         tray = Win32TrayIcon(monitor_url, controller)
+
+        def force_exit():
+            # Аварийный путь: окно pywebview не закрылось, главный поток завис в GUI-цикле.
+            try:
+                controller.write_log("Принудительное завершение launcher.")
+                controller.stop_backend()
+                tray.stop()
+            finally:
+                os._exit(0)
+
         try:
             tray.start()
-            open_monitor_window(monitor_url)
-            controller.write_log("Монитор открыт в браузере по умолчанию.")
+            window_mode, webview_module = select_monitor_mode(controller.write_log)
             try:
                 controller.start_backend()
             except Exception as exc:
                 controller.set_state(status="error", detail="Не удалось запустить backend: {}".format(exc))
                 controller.write_log("Ошибка первоначального запуска backend: {}".format(exc))
+            threading.Thread(target=supervise_until_exit, name="studio-supervisor", daemon=True).start()
+            if window_mode == "webview":
+                # Блокирует главный поток до закрытия окна; сбой включает запасной режим.
+                run_webview_monitor(webview_module, monitor_url, force_exit)
+            else:
+                open_monitor_window(monitor_url)
+                controller.write_log("Монитор открыт в окне Edge/браузера.")
             while not exit_requested.wait(0.5):
-                controller.refresh()
+                pass
         finally:
             controller.write_log("Завершение launcher.")
             controller.stop_backend()
             http_server.shutdown()
             http_server.server_close()
             tray.stop()
+            sys.stdout, sys.stderr = original_stdout, original_stderr
 
 
 if __name__ == "__main__":

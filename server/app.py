@@ -175,6 +175,8 @@ DEFAULT_PRESET = {
         "text_color": "#fcebeb",
         "name_bg_color": "#6366f1",
         "name_text_color": "#ffffff",
+        "text_stroke_color": "#000000",
+        "text_stroke_width": 0.0,
         "bg_opacity": 0.9,
         "hide_delay": 2.0,
         "avatar_position": "left",

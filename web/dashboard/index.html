@@ -151,6 +151,7 @@
         <section class="card">
           <h2>2. Визуал и Оформление</h2>
           
+          <!-- Строка 1: Аватар и его позиция -->
           <div class="form-row-2">
             <div class="form-group">
               <label>Аватарка персонажа:</label>
@@ -158,53 +159,61 @@
             </div>
             <div class="form-group">
               <label>Позиция аватарки:</label>
-              <select id="avatar-position">
-                <option value="left">Слева от окна (Left)</option>
-                <option value="right">Справа от окна (Right)</option>
-              </select>
+              <div class="segmented-control" data-target="avatar-position">
+                <input type="hidden" id="avatar-position" value="left">
+                <button type="button" class="seg-btn active" data-value="left">◧ Слева</button>
+                <button type="button" class="seg-btn" data-value="right">Справа ◨</button>
+              </div>
             </div>
           </div>
 
-          <div class="color-grid-extended">
+          <!-- Строка 2: Палитра 3x2 (1-й ряд — окно, 2-й ряд — текст и окантовка) -->
+          <div class="color-grid-3x2">
             <div class="form-group">
               <label>Цвет рамки:</label>
-              <input type="color" id="border-color" value="#6366f1">
+              <input type="color" id="border-color" value="#6366f1" class="studio-color-input" data-color-label="Цвет рамки">
             </div>
             <div class="form-group">
               <label>Фон диалога:</label>
-              <input type="color" id="bg-color" value="#0d0b14">
-            </div>
-            <div class="form-group">
-              <label>Текст диалога:</label>
-              <input type="color" id="text-color" value="#fcebeb">
+              <input type="color" id="bg-color" value="#0d0b14" class="studio-color-input" data-color-label="Фон диалога">
             </div>
             <div class="form-group">
               <label>Фон имени:</label>
-              <input type="color" id="name-bg-color" value="#6366f1">
+              <input type="color" id="name-bg-color" value="#6366f1" class="studio-color-input" data-color-label="Фон имени">
+            </div>
+            <div class="form-group">
+              <label>Текст диалога:</label>
+              <input type="color" id="text-color" value="#fcebeb" class="studio-color-input" data-color-label="Текст диалога">
             </div>
             <div class="form-group">
               <label>Цвет имени:</label>
-              <input type="color" id="name-text-color" value="#ffffff">
+              <input type="color" id="name-text-color" value="#ffffff" class="studio-color-input" data-color-label="Цвет имени">
+            </div>
+            <div class="form-group">
+              <label>Окантовка текста:</label>
+              <input type="color" id="text-stroke-color" value="#000000" class="studio-color-input" data-color-label="Окантовка текста">
             </div>
           </div>
 
+          <!-- Строка 3: Толщина окантовки и прозрачность фона -->
           <div class="form-row-2">
             <div class="form-group">
-              <label>Прозрачность фона:</label>
+              <label>Толщина окантовки:</label>
               <div class="slider-row">
-                <input type="range" id="bg-opacity-slider" min="0.1" max="1.0" step="0.05" value="0.9">
+                <input type="range" id="text-stroke-width-slider" min="0" max="4" step="0.5" value="0">
+                <span id="text-stroke-width-val">0px</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Непрозрачность фона:</label>
+              <div class="slider-row">
+                <input type="range" id="bg-opacity-slider" min="0" max="1.0" step="0.01" value="0.9">
                 <span id="bg-opacity-val">90%</span>
               </div>
             </div>
-            <div class="form-group">
-              <label>Задержка закрытия (после речи):</label>
-              <div class="slider-row">
-                <input type="range" id="hide-delay-slider" min="0.5" max="8.0" step="0.5" value="2.0">
-                <span id="hide-delay-val">2.0с</span>
-              </div>
-            </div>
           </div>
 
+          <!-- Строка 4: Форма и спецэффект рамки -->
           <div class="form-row-2">
             <div class="form-group">
               <label>Форма рамки (Box Shape):</label>
@@ -226,6 +235,7 @@
             </div>
           </div>
 
+          <!-- Строка 5: Шрифт и размер -->
           <div class="form-group">
             <label>Шрифт текста диалога:</label>
             <select id="font-family">
@@ -268,7 +278,8 @@
             </div>
           </div>
 
-          <div class="form-row-3">
+          <!-- Строка 6: Анимации и тайминг (сетка 2x2) -->
+          <div class="form-row-2">
             <div class="form-group">
               <label>Появление окна:</label>
               <select id="entrance-animation">
@@ -290,6 +301,9 @@
                 <option value="glitch-exit">Глитч-сбой</option>
               </select>
             </div>
+          </div>
+
+          <div class="form-row-2">
             <div class="form-group">
               <label>Вывод текста:</label>
               <select id="text-animation">
@@ -299,6 +313,13 @@
                 <option value="wavy-text">Волна (Wavy)</option>
                 <option value="instant">Мгновенно</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label>Задержка закрытия (после речи):</label>
+              <div class="slider-row" style="margin-top: 4px;">
+                <input type="range" id="hide-delay-slider" min="0.5" max="8.0" step="0.5" value="2.0">
+                <span id="hide-delay-val">2.0с</span>
+              </div>
             </div>
           </div>
 
@@ -357,10 +378,11 @@
             <div class="form-row-2">
               <div class="form-group">
                 <label>Хост сервера:</label>
-                <select id="cfg-host">
-                  <option value="127.0.0.1">127.0.0.1 (Только локальный ПК)</option>
-                  <option value="0.0.0.0">0.0.0.0 (Внешний доступ / Любой интерфейс)</option>
-                </select>
+                <div class="segmented-control" data-target="cfg-host">
+                  <input type="hidden" id="cfg-host" value="127.0.0.1">
+                  <button type="button" class="seg-btn active" data-value="127.0.0.1">Локальный (127.0.0.1)</button>
+                  <button type="button" class="seg-btn" data-value="0.0.0.0">Внешний (0.0.0.0)</button>
+                </div>
               </div>
               <div class="form-group">
                 <label>Порт сервера:</label>
@@ -502,10 +524,11 @@
                 </div>
                 <div class="form-group">
                   <label>Реакция на превышение:</label>
-                  <select id="gen-limit-action">
-                    <option value="chat">💬 Написать ошибку в чат (бот)</option>
-                    <option value="voice">🔊 Озвучить ошибку голосом</option>
-                  </select>
+                  <div class="segmented-control" data-target="gen-limit-action">
+                    <input type="hidden" id="gen-limit-action" value="chat">
+                    <button type="button" class="seg-btn active" data-value="chat">💬 В чат (бот)</button>
+                    <button type="button" class="seg-btn" data-value="voice">🔊 Озвучить</button>
+                  </div>
                 </div>
               </div>
               <div class="form-group" style="margin-top: 4px;">
@@ -518,10 +541,11 @@
             <div id="gen-options-phrases" class="form-group hidden">
               <div class="form-group">
                 <label>Режим приветствия:</label>
-                <select id="gen-phrase-mode">
-                  <option value="single">Одна статичная фраза</option>
-                  <option value="random" selected>Случайная фраза из списка</option>
-                </select>
+                <div class="segmented-control" data-target="gen-phrase-mode">
+                  <input type="hidden" id="gen-phrase-mode" value="random">
+                  <button type="button" class="seg-btn" data-value="single">Одна статичная фраза</button>
+                  <button type="button" class="seg-btn active" data-value="random">Случайная из списка</button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -568,15 +592,15 @@
               </div>
               <pre><code># Озвучка активным персонажем:
 curl -X POST "http://127.0.0.1:8765/speak" \
-     -H "Content-Type: application/json" \
-     -d "{\"text\": \"Привет, мир!\"}" \
-     --output speech.wav
+ -H "Content-Type: application/json" \
+ -d "{\"text\": \"Привет, мир!\"}" \
+ --output speech.wav
 
 # Озвучка с явным указанием персонажа и скорости:
 curl -X POST "http://127.0.0.1:8765/speak" \
-     -H "Content-Type: application/json" \
-     -d "{\"text\": \"Привет!\", \"character\": \"mita\", \"speed\": 1.1}" \
-     --output speech.wav</code></pre>
+ -H "Content-Type: application/json" \
+ -d "{\"text\": \"Привет!\", \"character\": \"mita\", \"speed\": 1.1}" \
+ --output speech.wav</code></pre>
             </div>
 
             <div class="snippet-box">
@@ -588,16 +612,16 @@ curl -X POST "http://127.0.0.1:8765/speak" \
 
 url = "http://127.0.0.1:8765/speak"
 payload = {
-    "text": "Привет от нейросети!",
-    "character": "mita",  # Необязательно (по умолчанию активный)
-    "speed": 1.0          # Необязательно (от 0.5 до 1.5)
+  "text": "Привет от нейросети!",
+  "character": "mita", # Необязательно (по умолчанию активный)
+  "speed": 1.0         # Необязательно (от 0.5 до 1.5)
 }
 
 response = requests.post(url, json=payload)
 if response.status_code == 200:
-    with open("output.wav", "wb") as f:
-        f.write(response.content)
-    print("Звук сохранен в output.wav")</code></pre>
+  with open("output.wav", "wb") as f:
+    f.write(response.content)
+  print("Звук сохранен в output.wav")</code></pre>
             </div>
           </section>
         </div>
@@ -605,7 +629,8 @@ if response.status_code == 200:
     </main>
   </div>
 
-  <script src="builder.js"></script>
+  <script src="color-picker.js"></script>
   <script src="app.js"></script>
+  <script src="builder.js"></script>
 </body>
 </html>

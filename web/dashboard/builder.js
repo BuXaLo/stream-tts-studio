@@ -17,7 +17,7 @@ const defaultPhrases = {
 function getServerSpeakUrl() {
   const hostInput = document.getElementById('cfg-host');
   const portInput = document.getElementById('cfg-port');
-  
+
   let host = hostInput ? hostInput.value.trim() : '127.0.0.1';
   let port = portInput ? parseInt(portInput.value, 10) || 8765 : 8765;
 
@@ -33,7 +33,7 @@ function updateGeneratorCharacterDropdown() {
   if (!sel) return;
   const currentVal = sel.value;
   sel.innerHTML = '<option value="">(По умолчанию — активный персонаж)</option>';
-  
+
   if (typeof currentPresets !== 'undefined' && currentPresets) {
     Object.keys(currentPresets).forEach(id => {
       const name = currentPresets[id].name || id;
@@ -69,18 +69,26 @@ function initScriptGenerator() {
 
   if (!eventTypeSel) return;
 
+  if (window.StudioUI && typeof window.StudioUI.syncAllSegmentedControls === 'function') {
+    window.StudioUI.syncAllSegmentedControls();
+  }
+
   function renderPhraseInputs(type, mode) {
     if (!phrasesContainer) return;
-    phrasesContainer.innerHTML = '';
+    phrasesContainer.replaceChildren();
     const phrases = defaultPhrases[type] || ["Привет, {user}!"];
-    
+
     if (mode === 'single') {
       if (btnAddPhrase) btnAddPhrase.classList.add('hidden');
       const div = document.createElement('div');
       div.className = 'phrase-row-item';
-      div.innerHTML = `<input type="text" class="phrase-input" value="${phrases[0]}">`;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'phrase-input';
+      inp.value = phrases[0];
+      inp.addEventListener('input', updateGeneratedCode);
+      div.appendChild(inp);
       phrasesContainer.appendChild(div);
-      div.querySelector('input').addEventListener('input', updateGeneratedCode);
     } else {
       if (btnAddPhrase) btnAddPhrase.classList.remove('hidden');
       phrases.forEach(p => addPhraseRow(p));
@@ -91,12 +99,19 @@ function initScriptGenerator() {
     if (!phrasesContainer) return;
     const div = document.createElement('div');
     div.className = 'phrase-row-item';
-    div.innerHTML = `
-      <input type="text" class="phrase-input" value="${val}">
-      <button type="button" class="btn-remove-phrase" title="Удалить">✖</button>
-    `;
-    div.querySelector('input').addEventListener('input', updateGeneratedCode);
-    div.querySelector('.btn-remove-phrase').addEventListener('click', () => {
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'phrase-input';
+    inp.value = val;
+    inp.addEventListener('input', updateGeneratedCode);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-remove-phrase';
+    removeBtn.title = 'Удалить';
+    removeBtn.textContent = '✖';
+    removeBtn.addEventListener('click', () => {
       if (phrasesContainer.children.length > 1) {
         div.remove();
         updateGeneratedCode();
@@ -104,6 +119,8 @@ function initScriptGenerator() {
         alert('Нужен хотя бы один вариант фразы!');
       }
     });
+
+    div.append(inp, removeBtn);
     phrasesContainer.appendChild(div);
   }
 
@@ -371,7 +388,7 @@ public class CPHInline
 
       const phrasesCode = phrasesArr.map(p => `        "${p.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',\n');
       const isRaid = (type === 'raid');
-      
+
       code = `using System;
 using System.IO;
 using System.Text;

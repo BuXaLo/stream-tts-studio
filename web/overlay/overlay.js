@@ -88,6 +88,14 @@ async function loadActiveTheme(charId = null, draftTheme = null) {
     const fontSize = theme.font_size ? `${theme.font_size}px` : '22px';
     const avatarPos = theme.avatar_position || 'left';
 
+    const strokeColor = (typeof theme.text_stroke_color === 'string' && /^#[0-9a-fA-F]{6}$/.test(theme.text_stroke_color.trim()))
+      ? theme.text_stroke_color.trim()
+      : '#000000';
+    const rawStrokeWidth = parseFloat(theme.text_stroke_width);
+    const strokeWidth = (Number.isFinite(rawStrokeWidth) && rawStrokeWidth > 0)
+      ? `${Math.min(4, Math.max(0, rawStrokeWidth))}px`
+      : '0px';
+
     if (avatarPos === 'right') {
       container.classList.add('avatar-right');
     } else {
@@ -105,6 +113,8 @@ async function loadActiveTheme(charId = null, draftTheme = null) {
     textTarget.style.color = tColor;
     textTarget.style.fontSize = fontSize;
     textTarget.style.fontFamily = `"${theme.font_family || 'Comfortaa'}", sans-serif`;
+    textTarget.style.setProperty('--text-stroke-color', strokeColor);
+    textTarget.style.setProperty('--text-stroke-width', strokeWidth);
     
     if (cursor) {
       cursor.style.backgroundColor = '';

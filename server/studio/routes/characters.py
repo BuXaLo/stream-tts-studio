@@ -43,15 +43,15 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
     def get_presets_list():
         presets = load_presets()
         active = get_active_character_id()
-        
+
         for char_id, data in presets.items():
             avatar_path = os.path.join(characters_dir, char_id, "avatar.png")
             has_avatar = os.path.exists(avatar_path)
             data["has_avatar"] = has_avatar
             data["avatar_url"] = f"/char_files/{char_id}/avatar.png" if has_avatar else ""
-            
+
         return {"presets": presets, "active": active}
-        
+
     @router.post("/api/presets/set_active")
     def api_set_active(data: dict):
         char_id = data.get("id")
@@ -62,19 +62,19 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             with get_file_lock(active_file):
                 set_active_character_id(char_id)
         return {"status": "ok", "active": char_id}
-        
+
     @router.get("/api/active_overlay_config")
     def get_active_overlay_config(char_id: Optional[str] = None):
         presets = load_presets()
         target_id = char_id or get_active_character_id()
         char_data = presets.get(target_id, default_preset)
-        
+
         avatar_url = ""
         if target_id and target_id in presets and re.fullmatch(r"[a-z0-9_-]+", target_id):
             avatar_path = os.path.join(characters_dir, target_id, "avatar.png")
             if os.path.exists(avatar_path):
                 avatar_url = f"/char_files/{target_id}/avatar.png"
-                
+
         theme = _normalize_theme(
             char_data.get("theme", default_preset["theme"]),
             default_preset["theme"]
@@ -85,7 +85,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             "avatar": avatar_url,
             "theme": theme
         }
-        
+
 
     @router.post("/api/characters/save")
     def api_save_character(
@@ -100,7 +100,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         char_id = re.sub(r'[^a-zA-Z0-9_\-]', '', char_id).lower()
         if not char_id:
             raise HTTPException(status_code=400, detail="Недопустимый ID персонажа.")
-            
+
         clean_wav = None
         if voice_file:
             try:
@@ -109,7 +109,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             except RuntimeError as exc:
                 log.warning("Character voice conversion failed: %s", exc)
                 raise HTTPException(status_code=400, detail="Не удалось обработать аудиофайл. Проверьте формат.")
-                
+
         avatar_bytes = None
         if avatar_file:
             avatar_bytes = avatar_file.file.read()
@@ -118,7 +118,7 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
                 or avatar_bytes.startswith(b"\xff\xd8\xff")
             ):
                 raise HTTPException(status_code=400, detail="Аватар должен быть файлом PNG или JPEG.")
-                
+
         try:
             raw_theme = json.loads(theme_json)
             if not isinstance(raw_theme, dict):
@@ -126,18 +126,18 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             theme = _normalize_theme(raw_theme, default_preset["theme"])
         except (TypeError, ValueError):
             theme = dict(default_preset["theme"])
-            
+
         with get_file_lock(presets_file):
             char_dir = os.path.join(characters_dir, char_id)
             os.makedirs(char_dir, exist_ok=True)
             voice_path = os.path.join(char_dir, "voice.wav")
             avatar_path = os.path.join(char_dir, "avatar.png")
-            
+
             if clean_wav is not None:
                 write_bytes_atomic(voice_path, clean_wav)
             if avatar_bytes is not None:
                 write_bytes_atomic(avatar_path, avatar_bytes)
-                
+
             presets = load_presets()
             presets[char_id] = {
                 "name": name,
@@ -146,18 +146,18 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
                 "theme": theme
             }
             save_presets(presets)
-            
+
             if clean_wav is not None:
                 for cache_key in list(prompt_cache):
                     if cache_key.startswith(voice_path + "_"):
                         prompt_cache.pop(cache_key, None)
-                        
+
             if not get_active_character_id():
                 with get_file_lock(active_file):
                     set_active_character_id(char_id)
-                    
+
         return {"status": "ok", "char_id": char_id}
-        
+
     @router.delete("/api/characters/{char_id}")
     def api_delete_character(char_id: str):
         with get_file_lock(presets_file):
@@ -174,6 +174,6 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             if os.path.exists(char_dir):
                 shutil.rmtree(char_dir, ignore_errors=True)
         return {"status": "ok"}
-    
+
 
     return router

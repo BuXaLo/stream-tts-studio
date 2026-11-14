@@ -8,6 +8,26 @@
 
 Portable-окружение изолировано; приложение не должно зависеть от системного Python или произвольно установленных системных библиотек. При обновлении кода не обновлять runtime архив автоматически.
 
+### Зафиксированная конфигурация portable runtime
+
+Подтверждённая конфигурация рабочей установки:
+
+- Python: `3.10.11`
+- TTS-модель: `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` (релиз 2025/12)
+- Локальный каталог модели: `cosyvoice3/pretrained_models/Fun-CosyVoice3-0.5B`
+- Официальный источник модели: https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+
+SHA256 четырёх основных файлов модели сверены с официальными LFS-хешами Hugging Face и совпали:
+
+| Файл | SHA256 |
+|---|---|
+| `llm.pt` | `69f43bd545131c30e98947fb360ea8b4dc9916d8e83dded7757c7ea4f5a24970` |
+| `flow.pt` | `a6fab32a7825e5b0bc855ddd948f8db9370b0a786fbc249caa4595e95b608e4b` |
+| `hift.pt` | `b279d7641eb97ae55b3b540cfba4f953c26492a2df758328a89a4d007ab87a65` |
+| `speech_tokenizer_v3.onnx` | `23236a74175dbdda47afc66dbadd5bcb41303c467a57c261cb8539ad9db9208d` |
+
+Эти значения фиксируют проверенную рабочую установку, а не требование автоматически обновлять runtime. При замене Python, модели или ML-зависимостей выполнять отдельную проверку совместимости и сохранять предыдущую рабочую копию.
+
 ## 2. Запуск
 
 Рекомендуемый запуск — корневой `start_studio.bat`: он запускает `server\launcher.pyw` через portable `pythonw.exe`, создаёт обязательный системный трей, запускает backend через portable `python.exe` и выбирает режим окна монитора. Основной режим — `pywebview` на WebView2; если пакет или WebView2 Runtime недоступен, Launcher использует Edge с `--app=`, а при отсутствии Edge — браузер по умолчанию. Если `python.exe` или `pythonw.exe` отсутствует, батник переключается на резервный `start_server.bat`. Прямой `start_server.bat` запускает `server\app.py` через portable `python.exe` с консольным выводом.

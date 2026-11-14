@@ -183,11 +183,12 @@ def test_monitor_window_falls_back_after_load_timeout(monkeypatch):
     assert fallback_calls == [True]
 
 
-def test_monitor_window_show_failure_requests_fallback():
+def test_open_monitor_window_uses_browser_when_webview_show_fails(monkeypatch):
     from types import SimpleNamespace
 
     module = _load_launcher_for_window_tests()
     log_messages = []
+    opened_urls = []
 
     class BrokenWindow:
         @staticmethod
@@ -200,7 +201,13 @@ def test_monitor_window_show_failure_requests_fallback():
     )
     window.window = BrokenWindow()
     window.loaded.set()
+    module.monitor_window = window
 
-    assert window.show() is False
+    monkeypatch.setattr(module.os.path, "isfile", lambda path: False)
+    monkeypatch.setattr(module.webbrowser, "open", lambda url: opened_urls.append(url))
+
+    module.open_monitor_window("http://127.0.0.1:1234/")
+
+    assert opened_urls == ["http://127.0.0.1:1234/"]
     assert any("Не удалось показать окно монитора" in message for message in log_messages)
 

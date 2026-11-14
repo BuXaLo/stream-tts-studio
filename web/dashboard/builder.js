@@ -168,8 +168,8 @@ function initScriptGenerator() {
 
     res += "\n    private static string CleanForTTS(string s)\n";
     res += "    {\n";
-  res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}|[\\u200D\\uFE0F\\u20E3]\", \"\");\n";
-  res += "        s = Regex.Replace(s, @\"[\\*\"\"`_#\\[\\]\\(\\)<>~]\", \"\");\n";
+    res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}|[\\u200D\\uFE0F\\u20E3]\", \"\");\n";
+    res += "        s = Regex.Replace(s, @\"[\\*\"\"`_#\\[\\]\\(\\)<>~]\", \"\");\n";
     res += "        return Regex.Replace(s, @\"\\s+\", \" \").Trim();\n";
     res += "    }\n";
 
@@ -232,75 +232,75 @@ using System.Threading.Tasks;
 
 public class CPHInline
 {
-  private static readonly HttpClient client = new HttpClient();
-  private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-  private const int MaxLength = ${maxLen};
-  private static int fileIndex = 0;
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+    private const int MaxLength = ${maxLen};
+    private static int fileIndex = 0;
 
-  public bool Execute()
-  {
-    try
+    public bool Execute()
     {
-      CPH.LogInfo("=== TTS EVENT: START ===");
-
-      string userName = "Зритель";
-      if (CPH.TryGetArg("user", out string userArg) && !string.IsNullOrWhiteSpace(userArg)) userName = userArg;
-      else if (CPH.TryGetArg("userName", out string uNameArg) && !string.IsNullOrWhiteSpace(uNameArg)) userName = uNameArg;
-
-      string text;
-      if (!CPH.TryGetArg("rawInput", out text) || string.IsNullOrWhiteSpace(text))
-      {
-        if (!CPH.TryGetArg("prompt", out text) || string.IsNullOrWhiteSpace(text))
+        try
         {
-          if (!CPH.TryGetArg("message", out text) || string.IsNullOrWhiteSpace(text))
-          {
-            CPH.SendMessage($"@{userName}, текст сообщения для озвучки не может быть пустым!");
-            return false;
-          }
-        }
-      }
+            CPH.LogInfo("=== TTS EVENT: START ===");
 
-      text = text.Trim();
-      if (text.Length > MaxLength)
-      {`;
+            string userName = "Зритель";
+            if (CPH.TryGetArg("user", out string userArg) && !string.IsNullOrWhiteSpace(userArg)) userName = userArg;
+            else if (CPH.TryGetArg("userName", out string uNameArg) && !string.IsNullOrWhiteSpace(uNameArg)) userName = uNameArg;
+
+            string text;
+            if (!CPH.TryGetArg("rawInput", out text) || string.IsNullOrWhiteSpace(text))
+            {
+                if (!CPH.TryGetArg("prompt", out text) || string.IsNullOrWhiteSpace(text))
+                {
+                    if (!CPH.TryGetArg("message", out text) || string.IsNullOrWhiteSpace(text))
+                    {
+                        CPH.SendMessage($"@{userName}, текст сообщения для озвучки не может быть пустым!");
+                        return false;
+                    }
+                }
+            }
+
+            text = text.Trim();
+            if (text.Length > MaxLength)
+            {`;
       if (action === 'chat') {
         code += `
-        CPH.SendMessage($"@{userName}, твое сообщение слишком длинное ({text.Length} симв.)! Лимит — {MaxLength}.");
-        return false;`;
+                CPH.SendMessage($"@{userName}, твое сообщение слишком длинное ({text.Length} симв.)! Лимит — {MaxLength}.");
+                return false;`;
       } else {
         code += `
-        text = "${limitText}";`;
+                text = "${limitText}";`;
       }
       code += `
-      }
+            }
 
-      string cleanText = CleanForTTS(text);
-      if (string.IsNullOrWhiteSpace(cleanText)) return false;
+            string cleanText = CleanForTTS(text);
+            if (string.IsNullOrWhiteSpace(cleanText)) return false;
 
-      Directory.CreateDirectory(OutputDirectory);
-      string json = "{\\"text\\":\\"" + EscapeJson(cleanText) + "\\"${charArg}}";
+            Directory.CreateDirectory(OutputDirectory);
+            string json = "{\\"text\\":\\"" + EscapeJson(cleanText) + "\\"${charArg}}";
 
-      byte[] wav = RequestWav(json);
-      if (wav == null)
-      {
-        CPH.SendMessage($"@{userName}, TTS-сервер сейчас недоступен.");
-        return false;
-      }
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.SendMessage($"@{userName}, TTS-сервер сейчас недоступен.");
+                return false;
+            }
 
-      fileIndex = (fileIndex % 3) + 1;
-      string outputFile = Path.Combine(OutputDirectory, "tts_" + fileIndex + ".wav");
-      File.WriteAllBytes(outputFile, wav);
+            fileIndex = (fileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "tts_" + fileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
 
-      CPH.PlaySound(outputFile, 1.0f, true);
-      CPH.LogInfo("=== TTS EVENT: SUCCESS ===");
-      return true;
+            CPH.PlaySound(outputFile, 1.0f, true);
+            CPH.LogInfo("=== TTS EVENT: SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("TTS EXCEPTION: " + ex.ToString());
+            return false;
+        }
     }
-    catch (Exception ex)
-    {
-      CPH.LogError("TTS EXCEPTION: " + ex.ToString());
-      return false;
-    }
-  }
 ` + getCommonHelpers(false, false, serverUrls) + `
 }`;
     } else if (type === 'donate') {
@@ -316,64 +316,64 @@ using System.Threading.Tasks;
 
 public class CPHInline
 {
-  private static readonly HttpClient client = new HttpClient();
-  private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-  private static int alertFileIndex = 0;
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+    private static int alertFileIndex = 0;
 
-  public bool Execute()
-  {
-    try
+    public bool Execute()
     {
-      CPH.LogInfo("=== EVENT: DONATION ===");
+        try
+        {
+            CPH.LogInfo("=== EVENT: DONATION ===");
 
-      string donorName = "Добрый человек";
-      if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) donorName = u;
-      else if (CPH.TryGetArg("donorName", out string dn) && !string.IsNullOrWhiteSpace(dn)) donorName = dn;
-      else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) donorName = un;
+            string donorName = "Добрый человек";
+            if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) donorName = u;
+            else if (CPH.TryGetArg("donorName", out string dn) && !string.IsNullOrWhiteSpace(dn)) donorName = dn;
+            else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) donorName = un;
 
-      int amount = 100;
-      if (CPH.TryGetArg("amount", out int amtInt)) amount = amtInt;
-      else if (CPH.TryGetArg("amount", out double amtDbl)) amount = (int)Math.Round(amtDbl);
+            int amount = 100;
+            if (CPH.TryGetArg("amount", out int amtInt)) amount = amtInt;
+            else if (CPH.TryGetArg("amount", out double amtDbl)) amount = (int)Math.Round(amtDbl);
 
-      string currency = "RUB";
-      if (CPH.TryGetArg("currency", out string cur) && !string.IsNullOrWhiteSpace(cur)) currency = cur.ToUpper().Trim();
+            string currency = "RUB";
+            if (CPH.TryGetArg("currency", out string cur) && !string.IsNullOrWhiteSpace(cur)) currency = cur.ToUpper().Trim();
 
-      string message = "";
-      if (CPH.TryGetArg("rawInput", out string ri) && !string.IsNullOrWhiteSpace(ri)) message = ri;
-      else if (CPH.TryGetArg("message", out string msg) && !string.IsNullOrWhiteSpace(msg)) message = msg;
+            string message = "";
+            if (CPH.TryGetArg("rawInput", out string ri) && !string.IsNullOrWhiteSpace(ri)) message = ri;
+            else if (CPH.TryGetArg("message", out string msg) && !string.IsNullOrWhiteSpace(msg)) message = msg;
 
-      string moneyPhrase = FormatMoneyWithDeclension(amount, currency);
+            string moneyPhrase = FormatMoneyWithDeclension(amount, currency);
 
-      string alertText = string.IsNullOrWhiteSpace(message)
-        ? "${tplNoMsg}".Replace("{user}", donorName).Replace("{amount}", moneyPhrase)
-        : "${tplWithMsg}".Replace("{user}", donorName).Replace("{amount}", moneyPhrase).Replace("{message}", message.Trim());
+            string alertText = string.IsNullOrWhiteSpace(message)
+                ? "${tplNoMsg}".Replace("{user}", donorName).Replace("{amount}", moneyPhrase)
+                : "${tplWithMsg}".Replace("{user}", donorName).Replace("{amount}", moneyPhrase).Replace("{message}", message.Trim());
 
-      alertText = CleanForTTS(alertText);
+            alertText = CleanForTTS(alertText);
 
-      Directory.CreateDirectory(OutputDirectory);
-      string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
+            Directory.CreateDirectory(OutputDirectory);
+            string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-      byte[] wav = RequestWav(json);
-      if (wav == null)
-      {
-        CPH.LogError("DONATION: TTS-студия недоступна, донат не озвучен.");
-        return false;
-      }
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("DONATION: TTS-студия недоступна, донат не озвучен.");
+                return false;
+            }
 
-      alertFileIndex = (alertFileIndex % 3) + 1;
-      string outputFile = Path.Combine(OutputDirectory, "donate_" + alertFileIndex + ".wav");
-      File.WriteAllBytes(outputFile, wav);
+            alertFileIndex = (alertFileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "donate_" + alertFileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
 
-      CPH.PlaySound(outputFile, 1.0f, true);
-      CPH.LogInfo("=== EVENT: DONATION SUCCESS ===");
-      return true;
+            CPH.PlaySound(outputFile, 1.0f, true);
+            CPH.LogInfo("=== EVENT: DONATION SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("DONATION EXCEPTION: " + ex.ToString());
+            return false;
+        }
     }
-    catch (Exception ex)
-    {
-      CPH.LogError("DONATION EXCEPTION: " + ex.ToString());
-      return false;
-    }
-  }
 ` + getCommonHelpers(true, false, serverUrls) + `
 }`;
     } else {
@@ -398,68 +398,68 @@ using System.Threading.Tasks;
 
 public class CPHInline
 {
-  private static readonly HttpClient client = new HttpClient();
-  private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-  private static int alertFileIndex = 0;
-  private static readonly Random random = new Random();
+    private static readonly HttpClient client = new HttpClient();
+    private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
+    private static int alertFileIndex = 0;
+    private static readonly Random random = new Random();
 
-  private static readonly string[] Templates = new string[]
-  {
-${phrasesCode}
-  };
-
-  public bool Execute()
-  {
-    try
+    private static readonly string[] Templates = new string[]
     {
-      CPH.LogInfo("=== EVENT: ${type.toUpperCase()} ===");
+${phrasesCode}
+    };
 
-      string userName = "Зритель";
-      if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) userName = u;
-      else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) userName = un;
+    public bool Execute()
+    {
+        try
+        {
+            CPH.LogInfo("=== EVENT: ${type.toUpperCase()} ===");
+
+            string userName = "Зритель";
+            if (CPH.TryGetArg("user", out string u) && !string.IsNullOrWhiteSpace(u)) userName = u;
+            else if (CPH.TryGetArg("userName", out string un) && !string.IsNullOrWhiteSpace(un)) userName = un;
 `;
 
       if (isRaid) {
         code += `
-      int viewers = 1;
-      if (CPH.TryGetArg("viewers", out int vCount)) viewers = vCount;
-      else if (CPH.TryGetArg("viewerCount", out int vc)) viewers = vc;
+            int viewers = 1;
+            if (CPH.TryGetArg("viewers", out int vCount)) viewers = vCount;
+            else if (CPH.TryGetArg("viewerCount", out int vc)) viewers = vc;
 
-      string viewersPhrase = viewers.ToString() + " " + GetHumanDeclension(viewers);
-      string template = Templates[random.Next(Templates.Length)];
-      string alertText = CleanForTTS(template.Replace("{streamer}", userName).Replace("{viewers_phrase}", viewersPhrase));`;
+            string viewersPhrase = viewers.ToString() + " " + GetHumanDeclension(viewers);
+            string template = Templates[random.Next(Templates.Length)];
+            string alertText = CleanForTTS(template.Replace("{streamer}", userName).Replace("{viewers_phrase}", viewersPhrase));`;
       } else {
         code += `
-      string template = Templates[random.Next(Templates.Length)];
-      string alertText = CleanForTTS(template.Replace("{user}", userName));`;
+            string template = Templates[random.Next(Templates.Length)];
+            string alertText = CleanForTTS(template.Replace("{user}", userName));`;
       }
 
       code += `
 
-      Directory.CreateDirectory(OutputDirectory);
-      string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
+            Directory.CreateDirectory(OutputDirectory);
+            string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-      byte[] wav = RequestWav(json);
-      if (wav == null)
-      {
-        CPH.LogError("${type.toUpperCase()}: TTS-студия недоступна.");
-        return false;
-      }
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("${type.toUpperCase()}: TTS-студия недоступна.");
+                return false;
+            }
 
-      alertFileIndex = (alertFileIndex % 3) + 1;
-      string outputFile = Path.Combine(OutputDirectory, "${type}_" + alertFileIndex + ".wav");
-      File.WriteAllBytes(outputFile, wav);
+            alertFileIndex = (alertFileIndex % 3) + 1;
+            string outputFile = Path.Combine(OutputDirectory, "${type}_" + alertFileIndex + ".wav");
+            File.WriteAllBytes(outputFile, wav);
 
-      CPH.PlaySound(outputFile, 1.0f, true);
-      CPH.LogInfo("=== EVENT: ${type.toUpperCase()} SUCCESS ===");
-      return true;
+            CPH.PlaySound(outputFile, 1.0f, true);
+            CPH.LogInfo("=== EVENT: ${type.toUpperCase()} SUCCESS ===");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CPH.LogError("${type.toUpperCase()} EXCEPTION: " + ex.ToString());
+            return false;
+        }
     }
-    catch (Exception ex)
-    {
-      CPH.LogError("${type.toUpperCase()} EXCEPTION: " + ex.ToString());
-      return false;
-    }
-  }
 ` + getCommonHelpers(false, isRaid, serverUrls) + `
 }`;
     }

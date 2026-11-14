@@ -769,11 +769,13 @@ body {
   border-radius: 8px;
   overflow: hidden;
   cursor: crosshair;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+  background-clip: padding-box;
   background-color: #ff0000;
   background-image:
     linear-gradient(to top, #000000, transparent),
-    linear-gradient(to right, #ffffff, transparent);
+    linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
 }
 
 .cp-saturation-cursor {
@@ -793,7 +795,8 @@ body {
   height: 12px;
   border-radius: 6px;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
   background: linear-gradient(
     to right,
     #ff0000 0%,

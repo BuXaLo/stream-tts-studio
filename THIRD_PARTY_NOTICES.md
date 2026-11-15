@@ -30,7 +30,11 @@ The owner's snapshot identifies `ffmpeg.exe` as FFmpeg 7.1.1 from Gyan's **full*
 
 The exact `ffmpeg -buildconf` output, binary SHA-256, original Gyan archive identity, corresponding source archive/revision and accompanying GPL materials were not included in the runtime snapshot. Therefore this repository does not yet claim that the FFmpeg redistribution checklist is complete.
 
-## Provenance inherited from the portable base archive\n\nThe project README identifies `mortimerme/repocollect` (`cosyvoice3-0529.7z`) as the starting portable CosyVoice archive. That provenance is recorded, but the exact archive revision, its complete license set, and the licenses of files copied or modified from it have not been independently inventoried. The portable archive is outside Git; therefore this repository cannot claim complete licensing for it from source inspection alone. The archive must be unpacked and audited before its license status can be marked complete.\n\n## Required completion work before publishing a portable archive
+## Provenance inherited from the portable base archive
+
+The project README identifies `mortimerme/repocollect` (`cosyvoice3-0529.7z`) as the starting portable CosyVoice archive. That provenance is recorded, but the exact archive revision, its complete license set, and the licenses of files copied or modified from it have not been independently inventoried. The portable archive is outside Git; therefore this repository cannot claim complete licensing for it from source inspection alone. The archive must be unpacked and audited before its license status can be marked complete.
+
+## Required completion work before publishing a portable archive
 
 1. Generate a complete inventory from the exact portable Python environment (direct and transitive Python packages, versions, license metadata); retain each package's bundled LICENSE/NOTICE files.
 2. Inventory every bundled executable, DLL, native library, model, tokenizer, auxiliary model, font and asset under the portable runtime.

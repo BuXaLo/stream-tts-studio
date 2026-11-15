@@ -31,3 +31,9 @@ footer{flex-shrink:0;padding:7px}
  .hero{padding:14px 0}
  .panel-head{padding:12px}
 }
+
+
+/* Compact service statuses in the monitor header. */
+.status-group{display:flex;align-items:center;gap:16px;min-width:0}.status{gap:6px;white-space:nowrap}.status i{flex:0 0 8px}.status .status-name{color:var(--text);font-weight:600}.status.disabled i,.status.unknown i{background:#737b89;box-shadow:none}.status.connecting i{background:var(--yellow)}.status.error i{background:var(--red)}
+@media(max-width:850px){.status-group{gap:12px;flex-wrap:wrap}}
+@media(max-width:560px){.status-group{width:100%;gap:10px 14px}}

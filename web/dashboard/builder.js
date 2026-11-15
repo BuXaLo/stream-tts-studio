@@ -17,7 +17,7 @@ const defaultPhrases = {
 function getServerSpeakUrl() {
   const hostInput = document.getElementById('cfg-host');
   const portInput = document.getElementById('cfg-port');
-  
+
   let host = hostInput ? hostInput.value.trim() : '127.0.0.1';
   let port = portInput ? parseInt(portInput.value, 10) || 8765 : 8765;
 
@@ -33,7 +33,7 @@ function updateGeneratorCharacterDropdown() {
   if (!sel) return;
   const currentVal = sel.value;
   sel.innerHTML = '<option value="">(По умолчанию — активный персонаж)</option>';
-  
+
   if (typeof currentPresets !== 'undefined' && currentPresets) {
     Object.keys(currentPresets).forEach(id => {
       const name = currentPresets[id].name || id;
@@ -69,18 +69,26 @@ function initScriptGenerator() {
 
   if (!eventTypeSel) return;
 
+  if (window.StudioUI && typeof window.StudioUI.syncAllSegmentedControls === 'function') {
+    window.StudioUI.syncAllSegmentedControls();
+  }
+
   function renderPhraseInputs(type, mode) {
     if (!phrasesContainer) return;
-    phrasesContainer.innerHTML = '';
+    phrasesContainer.replaceChildren();
     const phrases = defaultPhrases[type] || ["Привет, {user}!"];
-    
+
     if (mode === 'single') {
       if (btnAddPhrase) btnAddPhrase.classList.add('hidden');
       const div = document.createElement('div');
       div.className = 'phrase-row-item';
-      div.innerHTML = `<input type="text" class="phrase-input" value="${phrases[0]}">`;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'phrase-input';
+      inp.value = phrases[0];
+      inp.addEventListener('input', updateGeneratedCode);
+      div.appendChild(inp);
       phrasesContainer.appendChild(div);
-      div.querySelector('input').addEventListener('input', updateGeneratedCode);
     } else {
       if (btnAddPhrase) btnAddPhrase.classList.remove('hidden');
       phrases.forEach(p => addPhraseRow(p));
@@ -91,12 +99,19 @@ function initScriptGenerator() {
     if (!phrasesContainer) return;
     const div = document.createElement('div');
     div.className = 'phrase-row-item';
-    div.innerHTML = `
-      <input type="text" class="phrase-input" value="${val}">
-      <button type="button" class="btn-remove-phrase" title="Удалить">✖</button>
-    `;
-    div.querySelector('input').addEventListener('input', updateGeneratedCode);
-    div.querySelector('.btn-remove-phrase').addEventListener('click', () => {
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'phrase-input';
+    inp.value = val;
+    inp.addEventListener('input', updateGeneratedCode);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-remove-phrase';
+    removeBtn.title = 'Удалить';
+    removeBtn.textContent = '✖';
+    removeBtn.addEventListener('click', () => {
       if (phrasesContainer.children.length > 1) {
         div.remove();
         updateGeneratedCode();
@@ -104,6 +119,8 @@ function initScriptGenerator() {
         alert('Нужен хотя бы один вариант фразы!');
       }
     });
+
+    div.append(inp, removeBtn);
     phrasesContainer.appendChild(div);
   }
 
@@ -138,14 +155,20 @@ function initScriptGenerator() {
     updateGeneratedCode();
   }
 
-  function getCommonHelpers(includeMoney, includeHuman) {
+  function getCommonHelpers(includeMoney, includeHuman, serverUrls) {
     let res = "";
+    res += '\n    // Первый адрес — локальная студия. Если Streamer.bot на другом ПК, замените 192.168.1.111 на IP компьютера со Stream TTS Studio.\n';
+    res += '    private static readonly string[] ServerUrls = { "' + serverUrls.primary + '", "' + serverUrls.secondary + '" };\n';
+    res += '    private const int CacheSeconds = 30;\n';
+    res += '    private static readonly HttpClient probeClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };\n';
+    res += '\n    private byte[] RequestWav(string json)\n    {\n        for (int attempt = 0; attempt < 2; attempt++)\n        {\n            string baseUrl = ResolveServer(attempt > 0);\n            if (baseUrl == null) return null;\n            try\n            {\n                var content = new StringContent(json, Encoding.UTF8, "application/json");\n                var response = client.PostAsync(baseUrl + "/speak", content).GetAwaiter().GetResult();\n                if (!response.IsSuccessStatusCode)\n                {\n                    CPH.LogError("TTS ответил кодом " + (int)response.StatusCode + " (" + baseUrl + ")");\n                    return null; // сервер жив, но отказал: не перебираем\n                }\n                byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();\n                return wav.Length < 1000 ? null : wav;\n            }\n            catch (HttpRequestException ex) { CPH.LogWarn("TTS недоступен (" + baseUrl + "): " + ex.Message); }\n            catch (TaskCanceledException ex) { CPH.LogWarn("TTS таймаут (" + baseUrl + "): " + ex.Message); }\n        }\n        return null;\n    }\n';
+    res += '\n    private string ResolveServer(bool force)\n    {\n        if (!force)\n        {\n            string cached = CPH.GetGlobalVar<string>("tts_base_url", false);\n            long ts = CPH.GetGlobalVar<long>("tts_base_url_ts", false);\n            if (!string.IsNullOrEmpty(cached) && Array.IndexOf(ServerUrls, cached) >= 0 && (DateTime.UtcNow.Ticks - ts) < TimeSpan.FromSeconds(CacheSeconds).Ticks)\n                return cached;\n        }\n\n        foreach (string baseUrl in ServerUrls)\n        {\n            try\n            {\n                var response = probeClient.GetAsync(baseUrl + "/api/system_config").GetAwaiter().GetResult();\n                if (response.IsSuccessStatusCode)\n                {\n                    CPH.SetGlobalVar("tts_base_url", baseUrl, false);\n                    CPH.SetGlobalVar("tts_base_url_ts", DateTime.UtcNow.Ticks, false);\n                    return baseUrl;\n                }\n            }\n            catch { }\n        }\n        return null;\n    }\n';
 
     res += "\n    private static string EscapeJson(string s) => s.Replace(\"\\\\\", \"\\\\\\\\\").Replace(\"\\\"\", \"\\\\\\\"\").Replace(\"\\r\", \"\\\\r\").Replace(\"\\n\", \"\\\\n\");\n";
 
     res += "\n    private static string CleanForTTS(string s)\n";
     res += "    {\n";
-    res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}\", \"\");\n";
+    res += "        s = Regex.Replace(s, @\"\\p{Cs}|\\p{So}|\\p{Sk}|\\p{Sm}|[\\u200D\\uFE0F\\u20E3]\", \"\");\n";
     res += "        s = Regex.Replace(s, @\"[\\*\"\"`_#\\[\\]\\(\\)<>~]\", \"\");\n";
     res += "        return Regex.Replace(s, @\"\\s+\", \" \").Trim();\n";
     res += "    }\n";
@@ -189,6 +212,10 @@ function initScriptGenerator() {
     const charId = charSelect ? charSelect.value.trim() : "";
     const charArg = charId ? `,\\"character\\":\\"${charId}\\"` : "";
     const serverUrl = getServerSpeakUrl();
+    const serverPort = (serverUrl.match(/:(\d+)\/speak$/) || [])[1] || '8765';
+    const primaryServerUrl = serverUrl.replace(/\/speak$/, '');
+    const secondaryServerUrl = 'http://192.168.1.111:' + serverPort;
+    const serverUrls = { primary: primaryServerUrl, secondary: secondaryServerUrl };
     let code = "";
 
     if (type === 'tts') {
@@ -201,12 +228,12 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private const int MaxLength = ${maxLen};
     private static int fileIndex = 0;
 
@@ -253,17 +280,12 @@ public class CPHInline
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(cleanText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode)
+            byte[] wav = RequestWav(json);
+            if (wav == null)
             {
-                CPH.SendMessage($"@{userName}, не удалось озвучить сообщение (ошибка сервера).");
+                CPH.SendMessage($"@{userName}, TTS-сервер сейчас недоступен.");
                 return false;
             }
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
 
             fileIndex = (fileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "tts_" + fileIndex + ".wav");
@@ -279,7 +301,7 @@ public class CPHInline
             return false;
         }
     }
-` + getCommonHelpers(false, false) + `
+` + getCommonHelpers(false, false, serverUrls) + `
 }`;
     } else if (type === 'donate') {
       const tplNoMsg = (donateNoMsgInp ? donateNoMsgInp.value : "Спасибо, {user}, за поддержку в размере {amount}!").replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -290,12 +312,12 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private static int alertFileIndex = 0;
 
     public bool Execute()
@@ -331,13 +353,12 @@ public class CPHInline
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode) return false;
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("DONATION: TTS-студия недоступна, донат не озвучен.");
+                return false;
+            }
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "donate_" + alertFileIndex + ".wav");
@@ -353,7 +374,7 @@ public class CPHInline
             return false;
         }
     }
-` + getCommonHelpers(true, false) + `
+` + getCommonHelpers(true, false, serverUrls) + `
 }`;
     } else {
       let phrasesArr = [];
@@ -367,18 +388,18 @@ public class CPHInline
 
       const phrasesCode = phrasesArr.map(p => `        "${p.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(',\n');
       const isRaid = (type === 'raid');
-      
+
       code = `using System;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 public class CPHInline
 {
     private static readonly HttpClient client = new HttpClient();
     private static readonly string OutputDirectory = Path.Combine(Path.GetTempPath(), "TTS_Stream_Buffer");
-    private const string CosyVoiceUrl = "${serverUrl}";
     private static int alertFileIndex = 0;
     private static readonly Random random = new Random();
 
@@ -418,13 +439,12 @@ ${phrasesCode}
             Directory.CreateDirectory(OutputDirectory);
             string json = "{\\"text\\":\\"" + EscapeJson(alertText) + "\\"${charArg}}";
 
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(CosyVoiceUrl, content).GetAwaiter().GetResult();
-
-            if (!response.IsSuccessStatusCode) return false;
-
-            byte[] wav = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            if (wav.Length < 1000) return false;
+            byte[] wav = RequestWav(json);
+            if (wav == null)
+            {
+                CPH.LogError("${type.toUpperCase()}: TTS-студия недоступна.");
+                return false;
+            }
 
             alertFileIndex = (alertFileIndex % 3) + 1;
             string outputFile = Path.Combine(OutputDirectory, "${type}_" + alertFileIndex + ".wav");
@@ -440,7 +460,7 @@ ${phrasesCode}
             return false;
         }
     }
-` + getCommonHelpers(false, isRaid) + `
+` + getCommonHelpers(false, isRaid, serverUrls) + `
 }`;
     }
 

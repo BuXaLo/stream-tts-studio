@@ -7,9 +7,20 @@ let socket = null;
 let launcherMode = new URLSearchParams(location.search).has("launcher");
 let backendActive = false;
 let backendConnected = false;
+let backendBaseUrl = null;
+let daPollInProgress = false;
+let daStartupState = "unknown";
+let startupCollectionActive = true;
+let daStartupConnectedMessageSeen = false;
 let shutdownRequested = false;
-let bootLineCount = 0;
-let bootCleared = false;
+let launcherStopRequestInProgress = false;
+let startupOffset = 0;
+let startupDecoder = new TextDecoder("utf-8");
+let startupEncoder = new TextEncoder();
+let startupBuffer = "";
+let startupBufferOffset = 0;
+let startupLastEvent = null;
+let startupSuppressCosyVoiceContinuation = false;
 
 const timeText = value => {
     const date = new Date(value);
@@ -137,33 +148,24 @@ function setLauncherButton(status) {
     }
 }
 
-function clearBootView() {
-    if (bootCleared) return;
-    bootCleared = true;
-    generations.length = 0;
-    logs.length = 0;
-    seenEvents.clear();
-    counts.info = counts.warning = counts.error = 0;
-    $("infoCount").textContent = "0";
-    $("warningCount").textContent = "0";
-    $("errorCount").textContent = "0";
-    renderGenerations();
-    renderLogs();
-}
-
 function connect(backendUrl) {
+    backendBaseUrl = backendUrl;
+    pollDonationAlerts();
     const parsed = new URL(backendUrl);
     const scheme = parsed.protocol === "https:" ? "wss" : "ws";
     socket = new WebSocket(scheme + "://" + parsed.host + "/ws/monitor");
     socket.onopen = () => {
         backendConnected = true;
-        if (launcherMode) clearBootView();
         $("connectionText").textContent = "Подключено";
         $("connectionDot").parentElement.className = "status connected";
         if (!shutdownRequested) setLauncherButton("ready");
     };
     socket.onmessage = message => {
-        try { handleEvent(JSON.parse(message.data)); } catch (_) {}
+        try {
+            const event = JSON.parse(message.data);
+            if (launcherMode && event.type === "log") return;
+            handleEvent(event);
+        } catch (_) {}
     };
     socket.onclose = event => {
         backendConnected = false;
@@ -179,48 +181,174 @@ function connect(backendUrl) {
     };
 }
 
-function addStartupLines(content) {
-    const lines = content.split(/\r?\n/);
-    for (; bootLineCount < lines.length; bootLineCount++) {
-        const line = lines[bootLineCount].trim();
-        if (!line) continue;
-        const match = line.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+)\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+(.*)$/);
-        const levelName = match ? match[2] : "INFO";
-        const level = levelName === "WARN" || levelName === "WARNING" ? "warning" :
-            levelName === "ERROR" || levelName === "CRITICAL" ? "error" : "info";
-        const timestamp = match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString();
-        handleEvent({
-            event_id: "startup:" + bootLineCount,
-            type: "log",
-            level,
-            logger: "startup",
-            timestamp,
-            message: match ? match[3] : line
-        });
+
+function setDonationAlertsStatus(state, text, details) {
+    const status = $("daStatus");
+    status.className = "status " + state;
+    status.title = details || "";
+    $("daStatusText").textContent = text;
+}
+
+async function pollDonationAlerts() {
+    if (!backendBaseUrl || daPollInProgress) return;
+    daPollInProgress = true;
+    try {
+        const url = new URL("/api/da/config", backendBaseUrl);
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        const config = data.config || {};
+
+        if (config.enabled === false) {
+            daStartupState = "disabled";
+            setDonationAlertsStatus("disabled", "Отключён", "Интеграция DonationAlerts отключена в настройках");
+        } else if (config.enabled === true && data.is_connected === true) {
+            daStartupState = "connected";
+            const account = String(data.authorized_user || "").trim();
+            setDonationAlertsStatus("connected", account ? "Активен · " + account : "Активен", "Подключение к DonationAlerts установлено");
+        } else if (config.enabled === true && data.last_error) {
+            daStartupState = "error";
+            setDonationAlertsStatus("error", "Ошибка", String(data.last_error));
+        } else {
+            daStartupState = config.enabled === true ? "connecting" : "unknown";
+            setDonationAlertsStatus("connecting", "Подключение…", "Ожидание подключения к DonationAlerts");
+        }
+    } catch (error) {
+        daStartupState = "unknown";
+        setDonationAlertsStatus("unknown", "Нет данных", "Не удалось получить статус DonationAlerts: " + error.message);
+    } finally {
+        daPollInProgress = false;
     }
+}
+
+function startupLevel(message) {
+    if (/Traceback|Error|Exception|CRITICAL/i.test(message)) return "error";
+    if (/Warning|^WARNING\b/i.test(message)) return "warning";
+    return "info";
+}
+
+function isCosyVoiceAmpFutureWarning(message) {
+    return /cosyvoice[\\/]+cli[\\/]+model\.py:\d+/i.test(message) &&
+        /FutureWarning/i.test(message) &&
+        /torch\.cuda\.amp\.autocast/i.test(message);
+}
+
+function addStartupLines(content) {
+    startupBuffer += content;
+    let newlineIndex;
+    while ((newlineIndex = startupBuffer.indexOf("\n")) !== -1) {
+        const rawWithEnding = startupBuffer.slice(0, newlineIndex + 1);
+        startupBuffer = startupBuffer.slice(newlineIndex + 1);
+        const rawLine = rawWithEnding.replace(/\r?\n$/, "");
+        if (startupSuppressCosyVoiceContinuation) {
+            if (/^[ \t]/.test(rawLine)) {
+                startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+                continue;
+            }
+            startupSuppressCosyVoiceContinuation = false;
+        }
+        if (isCosyVoiceAmpFutureWarning(rawLine)) {
+            startupSuppressCosyVoiceContinuation = true;
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
+        if (!rawLine.trim()) {
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
+        if (/^[ \t]/.test(rawLine) && startupLastEvent) {
+            const previousLevel = startupLastEvent.level;
+            startupLastEvent.message += "\n" + rawLine;
+            const nextLevel = startupLevel(startupLastEvent.message);
+            if (nextLevel !== previousLevel) {
+                counts[previousLevel]--;
+                counts[nextLevel]++;
+                $(previousLevel === "warning" ? "warningCount" : previousLevel + "Count").textContent = counts[previousLevel];
+                $(nextLevel === "warning" ? "warningCount" : nextLevel + "Count").textContent = counts[nextLevel];
+                startupLastEvent.level = nextLevel;
+            }
+            renderLogs();
+            startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+            continue;
+        }
+        const lineOffset = startupBufferOffset;
+        const match = rawLine.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+)\s+(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+(.*)$/);
+        const event = {
+            event_id: "startup:" + lineOffset,
+            type: "log",
+            level: startupLevel(rawLine),
+            logger: "startup",
+            timestamp: match ? match[1].replace(" ", "T").replace(",", ".") : new Date().toISOString(),
+            message: match ? match[3] : rawLine.trim()
+        };
+        handleEvent(event);
+        if (event.message.includes("Подключено к DA Centrifugo")) {
+            daStartupConnectedMessageSeen = true;
+        }
+        startupLastEvent = event;
+        startupBufferOffset += startupEncoder.encode(rawWithEnding).length;
+    }
+}
+
+async function finishStartupCollection() {
+    await readStartupLog();
+    addStartupLines(startupDecoder.decode());
+    if (startupBuffer.length) {
+        addStartupLines("\n");
+        startupBufferOffset--;
+    }
+    startupCollectionActive = false;
+}
+
+async function readStartupLog() {
+    const response = await fetch("/startup-log?offset=" + startupOffset, { cache: "no-store" });
+    if (!response.ok) throw new Error("Не удалось получить startup-журнал");
+    const offsetHeader = response.headers.get("X-Log-Offset");
+    const nextOffset = offsetHeader === null ? NaN : Number(offsetHeader);
+    if (Number.isFinite(nextOffset) && nextOffset < startupOffset) {
+        startupDecoder = new TextDecoder("utf-8");
+        startupBuffer = "";
+        startupBufferOffset = 0;
+        startupLastEvent = null;
+        startupSuppressCosyVoiceContinuation = false;
+    }
+    addStartupLines(startupDecoder.decode(await response.arrayBuffer(), { stream: true }));
+    if (Number.isFinite(nextOffset)) startupOffset = nextOffset;
 }
 
 async function pollLauncher() {
     try {
-        const [statusResponse, logResponse] = await Promise.all([
-            fetch("/launcher-status", { cache: "no-store" }),
-            fetch("/startup-log", { cache: "no-store" })
-        ]);
-        if (!statusResponse.ok || !logResponse.ok) throw new Error("Не удалось получить состояние запуска");
+        const statusResponse = await fetch("/launcher-status", { cache: "no-store" });
+        if (!statusResponse.ok) throw new Error("Не удалось получить состояние запуска");
         const status = await statusResponse.json();
-        if (!bootCleared) addStartupLines(await logResponse.text());
+
+        if (startupCollectionActive) {
+            await readStartupLog();
+        }
+
+        if (status.close_monitor) {
+            window.close();
+        }
 
         if (status.status === "ready") {
             backendActive = true;
             $("connectionText").textContent = backendConnected ? "Подключено" : "Backend запущен, подключение…";
             if (!shutdownRequested) setLauncherButton("ready");
             if (!socket) connect(status.backend_url);
+
+            const startupComplete = daStartupState === "disabled" ||
+                (daStartupState === "connected" && daStartupConnectedMessageSeen);
+            if (startupCollectionActive && startupComplete && !launcherStopRequestInProgress && !shutdownRequested) {
+                await finishStartupCollection();
+            }
         } else if (status.status === "error") {
+            if (startupCollectionActive && !launcherStopRequestInProgress) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("error");
             $("connectionText").textContent = status.detail || "Ошибка запуска backend";
             $("connectionDot").parentElement.className = "status disconnected";
         } else if (status.status === "stopped") {
+            if (startupCollectionActive && !launcherStopRequestInProgress) await finishStartupCollection();
             backendActive = false;
             setLauncherButton("stopped");
             $("connectionText").textContent = "Студия остановлена";
@@ -245,6 +373,9 @@ document.querySelectorAll("[data-filter]").forEach(button => button.addEventList
 
 $("shutdownButton").addEventListener("click", async () => {
     if (launcherMode && !backendActive) {
+        startupCollectionActive = true;
+        daStartupState = "unknown";
+        daStartupConnectedMessageSeen = false;
         $("shutdownButton").disabled = true;
         $("shutdownButton").textContent = "Запуск студии…";
         try {
@@ -265,15 +396,23 @@ $("shutdownButton").addEventListener("click", async () => {
     $("shutdownButton").disabled = true;
     $("shutdownButton").textContent = "Выключение…";
     shutdownRequested = true;
+    if (launcherMode) {
+        startupCollectionActive = true;
+        launcherStopRequestInProgress = true;
+    }
     try {
         const shutdownUrl = launcherMode ? "/launcher-stop" : location.origin + "/api/monitor/shutdown";
         const response = await fetch(shutdownUrl, { method: "POST" });
         if (!response.ok) throw new Error("HTTP " + response.status);
+        if (launcherMode) await finishStartupCollection();
         $("connectionText").textContent = "Студия выключается";
     } catch (error) {
+        if (launcherMode) startupCollectionActive = false;
         alert("Не удалось выключить студию: " + error.message);
         shutdownRequested = false;
         setLauncherButton("ready");
+    } finally {
+        if (launcherMode) launcherStopRequestInProgress = false;
     }
 });
 
@@ -303,4 +442,5 @@ if (launcherMode) {
     connect(location.origin);
 }
 setInterval(() => $("clock").textContent = new Date().toLocaleString("ru-RU"), 1000);
+setInterval(pollDonationAlerts, 5000);
 })();

@@ -10,7 +10,7 @@ EXPECTED_ROUTES = {
     "GET /monitor", "GET /monitor/", "GET /monitor/{asset_name}", "POST /api/monitor/shutdown",
     "GET /overlay", "GET /overlay/", "POST /api/characters/save",
     "POST /api/convert_to_telegram_ogg", "POST /api/da/config",
-    "POST /api/da/test_donation", "POST /api/isolate_vocal",
+    "POST /api/da/test_donation",
     "POST /api/normalize_audio", "POST /api/presets/set_active",
     "POST /api/system_config", "POST /api/test_draft_tts",
     "POST /api/trigger_overlay_preview", "POST /api/trim_and_transcribe",

@@ -1,0 +1,12 @@
+{
+  "name": "TTS Studio — Монитор",
+  "short_name": "TTS Monitor",
+  "start_url": "/?launcher=1",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "type": "image/x-icon"
+    }
+  ]
+}

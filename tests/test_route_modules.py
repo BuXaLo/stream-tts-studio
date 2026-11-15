@@ -52,7 +52,7 @@ def test_tools_preview_router_broadcasts_overlay_event(tmp_path):
     ws = FakeWS()
     app = FastAPI()
     app.include_router(create_tools_router(
-        str(tmp_path), "whisper", "ffmpeg", None, None, FakeTorch, None, None,
+        str(tmp_path), "whisper", "ffmpeg", None, None, FakeTorch, None,
         None, lambda raw: raw, lambda: None, lambda *args: (b"wav", 1.0),
         lambda text: bool(text), lambda text: text, ws, lambda value: value,
         str(tmp_path), lambda: "alice",

@@ -52,25 +52,30 @@ This is a representative record, not a complete package-by-package license list.
 
 ## FFmpeg
 
-The local executable was identified as:
+The bundled executable was matched against the official Gyan 7.1.1 Full Build archive:
 
 ```text
-ffmpeg version 7.1.1-full_build-www.gyan.dev
-built with gcc 14.2.0
+Version: 7.1.1-full_build-www.gyan.dev
+Build: Gyan Full Build, 64-bit static Windows
+Archive: ffmpeg-7.1.1-full_build.zip
+Archive SHA-256: D760E1B3574402ED18B4865851F87D87E73965A982E6453212DF8621FED1C508
+FFmpeg source commit: db69d06eee
 --enable-gpl
 --enable-version3
 --enable-static
 ```
 
-The build configuration enables a broad set of external libraries, including x264, x265, libvpx, libaom, libass, libopus and libsoxr.
-
-**Local executable SHA-256:**
+The official archive was downloaded and inspected. Its SHA-256 matches the published archive checksum. The SHA-256 of the extracted `bin/ffmpeg.exe` also matches the executable in the local portable runtime:
 
 ```text
 B1383F5D07470D503EDECDAEE4BDDC5891E986E916A698299B357F79CFE445FD
 ```
 
-Gyan identifies its full static builds as GPLv3. The runtime contains `tools/LICENSE.GPL.txt`. The exact original Gyan archive and corresponding-source package for this binary have not been retained in the project audit, so this file does not claim that every GPL redistribution requirement has been independently verified. See [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/) and the [FFmpeg legal page](https://ffmpeg.org/legal.html).
+The archive's `README.txt` identifies the build as GPL v3 and records its configuration and a broad list of statically linked external libraries. The archive also contains a `LICENSE` file. The runtime contains `tools/LICENSE.GPL.txt`.
+
+The official archive and executable identity are therefore confirmed. A separate complete corresponding-source package for FFmpeg and every statically linked external library has not been collected or independently verified. This inventory records that limitation and does not claim a complete reproducible build package or legal audit.
+
+References: [Gyan FFmpeg 7.1.1 release](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1), [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/), [FFmpeg legal page](https://ffmpeg.org/legal.html).
 
 ## Distribution note
 

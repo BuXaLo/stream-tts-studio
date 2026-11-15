@@ -71,7 +71,9 @@ Runtime-данные и portable archive могут присутствовать
 - `studio.services`: текст, CosyVoice inference, DonationAlerts worker/parser, Streamer.bot delivery и FFmpeg helper.
 - `studio.routes`: страницы/WS, системные настройки, DonationAlerts OAuth/API, персонажи, шрифты, инструменты и `POST /speak`.
 
-Whisper и аудио endpoint orchestration находятся в `routes/tools.py`; `services/audio_tools.py` содержит общий FFmpeg helper. GPU-модель и генерация остаются в TTS service.
+Whisper и аудио endpoint orchestration находятся в `routes/tools.py`; `services/audio_tools.py` содержит общий FFmpeg helper `convert_to_clean_wav()`. Исходник хранится в браузере, а конвертация в WAV mono 24 kHz PCM16 с downmix каналов выполняется при запуске обработки. Обрезка, нормализация, тест TTS и сохранение персонажа используют общий путь. Нормализация применяется ко всему файлу, а не только к выделенному региону. GPU-модель и генерация остаются в TTS service.
+
+Редактор поддерживает историю до 6 шагов Ctrl+Z и полный сброс через «Исходный звук». Запись с микрофона и Demucs удалены из интерфейса.
 
 Этап разнесения монолитного backend завершён. Текущая структура разделяет bootstrap, core, services и routes; дальнейшее выделение модулей выполнять только при конкретной необходимости, сохраняя контракты и регрессионное покрытие.
 

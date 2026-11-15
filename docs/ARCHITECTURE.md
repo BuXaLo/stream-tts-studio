@@ -21,7 +21,6 @@ Stream TTS Studio — локальное Windows-приложение для с�
 | Backend | Python, FastAPI, Uvicorn |
 | TTS | CosyVoice 3, PyTorch, torchaudio, NumPy |
 | Распознавание | faster-whisper |
-| Очистка голоса | Demucs |
 | Аудио I/O | SoundFile, FFmpeg |
 | Интеграции | requests, websockets, OAuth DonationAlerts, Streamer.bot HTTP API |
 | Dashboard | HTML, CSS, vanilla JavaScript |
@@ -72,7 +71,7 @@ Runtime-данные и portable archive могут присутствовать
 - `studio.services`: текст, CosyVoice inference, DonationAlerts worker/parser, Streamer.bot delivery и FFmpeg helper.
 - `studio.routes`: страницы/WS, системные настройки, DonationAlerts OAuth/API, персонажи, шрифты, инструменты и `POST /speak`.
 
-Whisper/Demucs и аудио endpoint orchestration находятся в `routes/tools.py`; `services/audio_tools.py` содержит общий FFmpeg helper. GPU-модель и генерация остаются в TTS service.
+Whisper и аудио endpoint orchestration находятся в `routes/tools.py`; `services/audio_tools.py` содержит общий FFmpeg helper. GPU-модель и генерация остаются в TTS service.
 
 Этап разнесения монолитного backend завершён. Текущая структура разделяет bootstrap, core, services и routes; дальнейшее выделение модулей выполнять только при конкретной необходимости, сохраняя контракты и регрессионное покрытие.
 

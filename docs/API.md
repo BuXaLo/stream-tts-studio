@@ -28,7 +28,6 @@
 | POST | `/api/upload_font` | Загрузка шрифта |
 | POST | `/api/trim_and_transcribe` | Обрезка WAV и транскрипция |
 | POST | `/api/normalize_audio` | Нормализация аудио |
-| POST | `/api/isolate_vocal` | Выделение вокала Demucs |
 | POST | `/api/convert_to_telegram_ogg` | Конвертация в OGG/Opus |
 | POST | `/api/test_draft_tts` | Пробная генерация с временным/сохранённым голосом |
 | POST | `/api/trigger_overlay_preview` | Тестовая реплика Overlay без генерации |

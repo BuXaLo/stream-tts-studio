@@ -60,7 +60,6 @@ import urllib.parse
 
 import numpy as np
 import torch
-import torchaudio
 import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -88,7 +87,7 @@ class EndpointFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
 logger.info("=" * 60)
-logger.info("TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + Demucs + DA)")
+logger.info("TTS STUDIO & OVERLAY BACKEND (CosyVoice 3 + Whisper + DA)")
 logger.info("=" * 60)
 
 WHISPER_PATH = os.path.join(COSY_DIR, "pretrained_models", "faster-whisper-small")
@@ -246,7 +245,7 @@ app.include_router(create_characters_router(load_presets, save_presets, get_acti
 from studio.routes.fonts import create_fonts_router
 app.include_router(create_fonts_router(CUSTOM_FONTS_DIR, write_bytes_atomic))
 from studio.routes.tools import create_tools_router
-app.include_router(create_tools_router(TEMP_DIR, WHISPER_PATH, FFMPEG_PATH, np, sf, torch, torchaudio, WhisperModel, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, CHARACTERS_DIR, get_active_character_id, logger))
+app.include_router(create_tools_router(TEMP_DIR, WHISPER_PATH, FFMPEG_PATH, np, sf, torch, WhisperModel, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, CHARACTERS_DIR, get_active_character_id, logger))
 from studio.routes.speak import create_speak_router
 app.include_router(create_speak_router(load_presets, get_active_character_id, CHARACTERS_DIR, generate_voice, ws_manager, has_speakable_content, sanitize_overlay_text, torch, logger))
 

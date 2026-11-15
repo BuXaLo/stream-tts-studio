@@ -92,7 +92,7 @@ function Wait-ForCheckpoint {
     )
     Write-Host ""
     Write-Host $Prompt -ForegroundColor Cyan
-    [void](Read-Host "Нажми Enter, когда этап завершён")
+    [void](Read-Host "Press Enter when this step is complete")
     Capture-Snapshot -Label $Label
 }
 
@@ -150,39 +150,39 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Перед началом полностью закрой Stream TTS Studio." -ForegroundColor Yellow
-    Write-Host "Не запускай другие тяжёлые GPU-задачи на время замера."
-    [void](Read-Host "Когда Studio закрыта, нажми Enter для исходного замера")
+    Write-Host "Before starting, fully close Stream TTS Studio." -ForegroundColor Yellow
+    Write-Host "Do not run other heavy GPU workloads during the measurement."
+    [void](Read-Host "When Studio is closed, press Enter to take the baseline snapshot")
     Capture-Snapshot -Label "Before Studio start"
 
-    Wait-ForCheckpoint -Prompt "Теперь запусти Studio обычным способом. Дождись сообщения об успешной загрузке CosyVoice. Генерацию пока НЕ запускай." -Label "Model loaded, before first generation"
-    Wait-ForCheckpoint -Prompt "Выполни первую прогревающую генерацию и дождись её завершения." -Label "After warm-up generation 1"
-    Wait-ForCheckpoint -Prompt "Выполни вторую прогревающую генерацию и дождись её завершения." -Label "After warm-up generation 2"
-    Wait-ForCheckpoint -Prompt "Выполни одну обычную генерацию (не прогревочную) и дождись завершения." -Label "After ordinary generation"
+    Wait-ForCheckpoint -Prompt "Start Studio normally. Wait until CosyVoice has loaded successfully. Do NOT generate audio yet." -Label "Model loaded, before first generation"
+    Wait-ForCheckpoint -Prompt "Run the first warm-up generation and wait for it to finish." -Label "After warm-up generation 1"
+    Wait-ForCheckpoint -Prompt "Run the second warm-up generation and wait for it to finish." -Label "After warm-up generation 2"
+    Wait-ForCheckpoint -Prompt "Run one normal (non-warm-up) generation and wait for it to finish." -Label "After ordinary generation"
 
     Write-Host ""
-    Write-Host "Начинается 15 минут простоя. Не отправляй TTS-запросы и не закрывай Studio." -ForegroundColor Yellow
+    Write-Host "A 15-minute idle period starts now. Do not send TTS requests or close Studio." -ForegroundColor Yellow
     Run-IdleSampling -Minutes 15 -Milestones @(5, 15)
 
     Write-Host ""
-    Write-Host "Теперь выполни серию из 5-10 обычных генераций подряд. После последней дождись завершения." -ForegroundColor Cyan
-    [void](Read-Host "Нажми Enter после завершения серии")
+    Write-Host "Now run 5-10 normal generations in a row. Wait for the last one to finish." -ForegroundColor Cyan
+    [void](Read-Host "Press Enter after the batch has finished")
     Capture-Snapshot -Label "Immediately after 5-10 generation batch"
 
     Write-Host ""
-    Write-Host "Оставь Studio без запросов ещё на 5 минут." -ForegroundColor Yellow
+    Write-Host "Leave Studio idle, without requests, for another 5 minutes." -ForegroundColor Yellow
     Run-IdleSampling -Minutes 5 -Milestones @(5)
 
     Capture-Snapshot -Label "Final snapshot"
     Write-Section "COLLECTION COMPLETE"
     Write-Log ("Report saved to: " + $logPath)
     Write-Host ""
-    Write-Host ("Готово. Отчёт: " + $logPath) -ForegroundColor Green
+    Write-Host ("Done. Report: " + $logPath) -ForegroundColor Green
 }
 catch {
     Write-Log ("FATAL ERROR: " + $_.Exception.Message)
     Write-Log $_.ScriptStackTrace
-    Write-Host ("Сбор прерван. Частичный отчёт: " + $logPath) -ForegroundColor Red
+    Write-Host ("Collection stopped. Partial report: " + $logPath) -ForegroundColor Red
 }
 finally {
     if ($script:LogWriter) {
@@ -191,4 +191,4 @@ finally {
     }
 }
 
-Read-Host "Нажми Enter для закрытия окна"
+Read-Host "Press Enter to close this window"

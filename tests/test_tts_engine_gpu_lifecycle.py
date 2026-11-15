@@ -94,3 +94,126 @@ def test_successful_generation_preserves_model_parameters_and_wav_contract(monke
         assert wav.getframerate() == 24000
         assert wav.getnframes() == 2400
 
+
+
+def test_last_result_tensor_is_alive_when_vram_cleanup_runs(monkeypatch):
+    import weakref
+
+    tensor_ref = None
+    cleanup_observations = []
+    audio = np.linspace(-0.25, 0.25, 2400, dtype=np.float32)
+
+    class FakeTensor:
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return audio
+
+    class FakeFrontend:
+        def text_normalize(self, text, **kwargs):
+            return text
+
+        def frontend_zero_shot(self, text, prompt, voice_path, sample_rate, extra):
+            return {"normalized_text": text}
+
+    class FakeInference:
+        def tts(self, **kwargs):
+            nonlocal tensor_ref
+            tensor = FakeTensor()
+            tensor_ref = weakref.ref(tensor)
+            yield {"tts_speech": tensor}
+
+    class FakeModel:
+        sample_rate = 24000
+        frontend = FakeFrontend()
+        model = FakeInference()
+
+    def observe_cleanup():
+        cleanup_observations.append(tensor_ref() is not None)
+
+    model = FakeModel()
+    monkeypatch.setattr(tts_engine, "clear_vram", observe_cleanup)
+    tts_engine.configure_tts(
+        model=model,
+        lock=threading.RLock(),
+        config_loader=lambda: {"n_timesteps": 6},
+        app_logger=Mock(),
+        numpy_module=np,
+        torch_module=SimpleNamespace(inference_mode=nullcontext),
+    )
+
+    tts_engine._generate_voice_impl(
+        "Hello.", "voices/test/voice.wav", "Reference text"
+    )
+
+    # Characterizes current code: the loop variable result still holds the
+    # last result dictionary (and tensor) when clear_vram() is called.
+    assert cleanup_observations == [True]
+
+
+def test_successful_generation_combines_multiple_tts_results(monkeypatch):
+    audio_parts = [
+        np.full(1200, 0.1, dtype=np.float32),
+        np.full(1200, -0.1, dtype=np.float32),
+    ]
+    calls = []
+
+    class FakeTensor:
+        def __init__(self, values):
+            self.values = values
+
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return self.values
+
+    class FakeFrontend:
+        def text_normalize(self, text, **kwargs):
+            return text
+
+        def frontend_zero_shot(self, text, prompt, voice_path, sample_rate, extra):
+            return {"normalized_text": text}
+
+    class FakeInference:
+        def tts(self, **kwargs):
+            calls.append(kwargs)
+            for values in audio_parts:
+                yield {"tts_speech": FakeTensor(values)}
+
+    class FakeModel:
+        sample_rate = 24000
+        frontend = FakeFrontend()
+        model = FakeInference()
+
+    cleanup_calls = []
+    model = FakeModel()
+    monkeypatch.setattr(
+        tts_engine, "clear_vram", lambda: cleanup_calls.append("clear")
+    )
+    tts_engine.configure_tts(
+        model=model,
+        lock=threading.RLock(),
+        config_loader=lambda: {"n_timesteps": 6},
+        app_logger=Mock(),
+        numpy_module=np,
+        torch_module=SimpleNamespace(inference_mode=nullcontext),
+    )
+
+    wav_bytes, duration = tts_engine._generate_voice_impl(
+        "Hello.", "voices/test/voice.wav", "Reference text"
+    )
+
+    assert len(calls) == 1
+    assert cleanup_calls == ["clear"]
+    assert duration == 0.1
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+        assert wav.getnframes() == 2400
+        assert wav.getframerate() == 24000

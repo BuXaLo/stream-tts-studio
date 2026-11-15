@@ -131,13 +131,9 @@ input[type="text"]:disabled { background: #15131f; color: #888; cursor: not-allo
 .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 
 .hidden-file-input { display: none; }
-.sample-source-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sample-source-buttons { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .btn-full { width: 100%; }
 
-.recording-box { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; }
-.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; animation: recBlink 1s infinite alternate; }
-@keyframes recBlink { 0% { opacity: 0.3; } 100% { opacity: 1; } }
-#recording-timer { font-size: 12px; font-weight: 600; color: #f87171; }
 
 .slider-row { display: flex; align-items: center; gap: 12px; }
 .slider-row input { flex-grow: 1; accent-color: var(--accent); }
@@ -974,11 +970,6 @@ body {
 
 .app-layout .checkbox-label {
   color: #dce2ef;
-}
-
-.app-layout .recording-box {
-  background: rgba(239, 68, 68, 0.09);
-  border-color: rgba(239, 91, 109, 0.75);
 }
 
 .app-layout .telegram-box {

@@ -9,6 +9,8 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from studio.services.audio_tools import AudioDecodeError
+
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -106,9 +108,12 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
             try:
                 raw_voice = voice_file.file.read()
                 clean_wav = convert_to_clean_wav(raw_voice)
-            except RuntimeError as exc:
+            except AudioDecodeError as exc:
                 log.warning("Character voice conversion failed: %s", exc)
                 raise HTTPException(status_code=400, detail="Не удалось обработать аудиофайл. Проверьте формат.")
+            except RuntimeError as exc:  # нет FFmpeg / таймаут: ошибка сервера, а не файла
+                log.error("Character voice: ошибка FFmpeg: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
 
         avatar_bytes = None
         if avatar_file:

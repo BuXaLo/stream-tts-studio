@@ -7,15 +7,75 @@ let currentPresets = {};
 let activeCharId = "";
 let selectedCharId = null;
 
-let isRecording = false;
-let mediaRecorder = null;
-let audioChunks = [];
-let recordInterval = null;
-let recordSeconds = 0;
-
 let stitcherFiles = [];
 let draftVoiceBlob = null;
 let originalRawFileBlob = null;
+let voiceHistory = []; // прежние версии голоса для отката: {blob (null = исходный файл), refText, region}
+const VOICE_HISTORY_LIMIT = 6;
+const REGION_IGNORED_MIN_FILE_SEC = 15;
+
+function formatDuration(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m > 0 ? `${m} мин ${s} с` : `${s} с`;
+}
+
+// Нормализация обрабатывает ВЕСЬ текущий файл и не учитывает выделенный регион: предупреждаем, если они сильно различаются.
+function confirmRegionIgnored(actionName) {
+  const duration = wavesurfer ? wavesurfer.getDuration() : 0;
+  if (!duration || !currentRegion) return true;
+  const regionLen = currentRegion.end - currentRegion.start;
+  if (duration <= REGION_IGNORED_MIN_FILE_SEC || regionLen >= duration - 1) return true;
+  return confirm(
+    `Выделено ${formatDuration(regionLen)}, но ${actionName} применяется ко всему файлу (${formatDuration(duration)}). ` +
+    'Выделенная область не учитывается.\nЧтобы работать только с фрагментом, сначала нажмите «Обрезать и распознать». Продолжить?'
+  );
+}
+
+function pushVoiceVersion(newBlob) {
+  voiceHistory.push({
+    blob: draftVoiceBlob,
+    refText: (document.getElementById('ref-text') || {}).value || '',
+    region: currentRegion ? { start: currentRegion.start, end: currentRegion.end } : null
+  });
+  if (voiceHistory.length > VOICE_HISTORY_LIMIT) voiceHistory.shift();
+  draftVoiceBlob = newBlob;
+}
+
+function undoVoiceStep() {
+  if (!wavesurfer || voiceHistory.length === 0) return;
+  const prev = voiceHistory.pop();
+  draftVoiceBlob = prev.blob;
+  const active = draftVoiceBlob || originalRawFileBlob;
+  if (!active) return;
+  loadAudioToWaveSurfer(URL.createObjectURL(active));
+  if (prev.region) {
+    wavesurfer.once('ready', () => { // срабатывает после стандартной расстановки региона
+      wsRegions.clearRegions();
+      currentRegion = wsRegions.addRegion({
+        start: prev.region.start,
+        end: Math.min(wavesurfer.getDuration(), prev.region.end),
+        color: 'rgba(99, 102, 241, 0.3)',
+        drag: true,
+        resize: true
+      });
+      updateRegionTimeInfo();
+    });
+  }
+  const refInput = document.getElementById('ref-text');
+  if (refInput) refInput.value = prev.refText;
+  if (!draftVoiceBlob) document.getElementById('btn-restore-noise').classList.add('hidden');
+  setDirty(true);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.code !== 'KeyZ') return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target && e.target.isContentEditable)) return;
+  if (voiceHistory.length === 0) return;
+  e.preventDefault();
+  undoVoiceStep();
+});
 let currentDraftAvatarBase64 = "";
 
 let isDirty = false;
@@ -742,7 +802,7 @@ async function selectCharacter(id) {
     btnSetActive.innerText = 'Сделать активным';
   }
 
-  draftVoiceBlob = null;
+  draftVoiceBlob = null; voiceHistory = [];
   originalRawFileBlob = null;
   stitcherFiles = [];
   document.getElementById('stitcher-container').classList.add('hidden');
@@ -839,7 +899,7 @@ function createNewCharacter() {
   btnSetActive.disabled = true;
   btnSetActive.innerText = 'Сделать активным';
 
-  draftVoiceBlob = null;
+  draftVoiceBlob = null; voiceHistory = [];
   originalRawFileBlob = null;
   stitcherFiles = [];
   document.getElementById('stitcher-container').classList.add('hidden');
@@ -1259,7 +1319,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (files.length === 1) {
       originalRawFileBlob = files[0];
-      draftVoiceBlob = null;
+      draftVoiceBlob = null; voiceHistory = [];
       loadAudioToWaveSurfer(URL.createObjectURL(files[0]));
       document.getElementById('btn-restore-noise').classList.add('hidden');
       setDirty(true);
@@ -1353,57 +1413,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const stitchedBlob = audioBufferToWav(outBuf);
     originalRawFileBlob = stitchedBlob;
-    draftVoiceBlob = null;
+    draftVoiceBlob = null; voiceHistory = [];
     loadAudioToWaveSurfer(URL.createObjectURL(stitchedBlob));
     document.getElementById('btn-restore-noise').classList.add('hidden');
     setDirty(true);
-  }
-
-  const btnRecordMic = document.getElementById('btn-record-mic');
-  const btnStopRecord = document.getElementById('btn-stop-record');
-  const recBox = document.getElementById('recording-indicator');
-  const recTimer = document.getElementById('recording-timer');
-
-  if (btnRecordMic) {
-    btnRecordMic.addEventListener('click', async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        recordSeconds = 0;
-
-        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-        mediaRecorder.onstop = async () => {
-          const blob = new Blob(audioChunks, { type: 'audio/wav' });
-          originalRawFileBlob = blob;
-          draftVoiceBlob = null;
-          loadAudioToWaveSurfer(URL.createObjectURL(blob));
-          document.getElementById('btn-restore-noise').classList.add('hidden');
-          setDirty(true);
-        };
-
-        mediaRecorder.start();
-        recBox.classList.remove('hidden');
-        recordInterval = setInterval(() => {
-          recordSeconds++;
-          const mins = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
-          const secs = String(recordSeconds % 60).padStart(2, '0');
-          recTimer.innerText = `Идет запись: ${mins}:${secs}`;
-        }, 1000);
-      } catch (e) {
-        alert('Ошибка доступа к микрофону: ' + e.message);
-      }
-    });
-  }
-
-  if (btnStopRecord) {
-    btnStopRecord.addEventListener('click', () => {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        clearInterval(recordInterval);
-        recBox.classList.add('hidden');
-      }
-    });
   }
 
   document.getElementById('btn-play-region').addEventListener('click', () => {
@@ -1436,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const byteArray = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
       const trimmedBlob = new Blob([byteArray], { type: 'audio/wav' });
 
-      draftVoiceBlob = trimmedBlob;
+      pushVoiceVersion(trimmedBlob);
       loadAudioToWaveSurfer(URL.createObjectURL(trimmedBlob));
 
       if (data.text) {
@@ -1454,6 +1467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-normalize').addEventListener('click', async () => {
     if (!wavesurfer) return;
+    if (!confirmRegionIgnored('выравнивание')) return;
     const btn = document.getElementById('btn-normalize');
     const origText = btn.innerText;
     btn.innerText = '⏳ Выравнивание...';
@@ -1472,7 +1486,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!res.ok) throw new Error('Ошибка нормализации');
 
       const normBlob = await res.blob();
-      draftVoiceBlob = normBlob;
+      pushVoiceVersion(normBlob);
 
       const curStart = currentRegion ? currentRegion.start : 0;
       const curEnd = currentRegion ? currentRegion.end : 5.5;
@@ -1500,61 +1514,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  document.getElementById('btn-isolate-vocal').addEventListener('click', async () => {
-    if (!wavesurfer) return;
-    const btn = document.getElementById('btn-isolate-vocal');
-    const origHtml = btn.innerHTML;
-    btn.innerHTML = '⏳ Нейросеть Demucs очищает...';
-    btn.disabled = true;
-
-    try {
-      const activeFile = draftVoiceBlob || originalRawFileBlob;
-      if (!activeFile) throw new Error('Сначала загрузите сэмпл');
-
-      const shiftsVal = parseInt(document.getElementById('demucs-shifts').value, 10) || 2;
-
-      const fd = new FormData();
-      fd.append('audio', activeFile, 'demucs_in.wav');
-      fd.append('shifts', shiftsVal);
-
-      const res = await fetch('/api/isolate_vocal', { method: 'POST', body: fd });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Ошибка очистки Demucs');
-      }
-
-      const isolatedBlob = await res.blob();
-      draftVoiceBlob = isolatedBlob;
-
-      const curStart = currentRegion ? currentRegion.start : 0;
-      const curEnd = currentRegion ? currentRegion.end : 5.5;
-
-      wavesurfer.load(URL.createObjectURL(isolatedBlob));
-      wavesurfer.once('ready', () => {
-        wsRegions.clearRegions();
-        currentRegion = wsRegions.addRegion({
-          start: curStart,
-          end: Math.min(wavesurfer.getDuration(), curEnd),
-          color: 'rgba(99, 102, 241, 0.3)',
-          drag: true,
-          resize: true
-        });
-        updateRegionTimeInfo();
-      });
-
-      document.getElementById('btn-restore-noise').classList.remove('hidden');
-      setDirty(true);
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      btn.innerHTML = origHtml;
-      btn.disabled = false;
-    }
-  });
-
   document.getElementById('btn-restore-noise').addEventListener('click', () => {
     if (originalRawFileBlob) {
-      draftVoiceBlob = null;
+      draftVoiceBlob = null; voiceHistory = [];
       loadAudioToWaveSurfer(URL.createObjectURL(originalRawFileBlob));
       document.getElementById('btn-restore-noise').classList.add('hidden');
       setDirty(true);

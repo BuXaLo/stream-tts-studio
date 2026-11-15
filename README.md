@@ -114,7 +114,6 @@ Stream TTS Studio можно использовать параллельно с 
 * 🗣️ Zero-shot voice cloning по голосовому референсу
 * 👤 Несколько голосовых персонажей
 * ✂️ Редактор голосового референса
-* 🧹 Очистка голоса через **Demucs**
 * 📝 Автоматическая транскрипция через **faster-whisper**
 * 🔊 Нормализация и подготовка аудио через **FFmpeg**
 * ⚡ GPU-инференс через **PyTorch + CUDA**
@@ -286,15 +285,16 @@ characters/
 
 Встроенный редактор позволяет:
 
-1. загрузить аудио или записать его с микрофона;
+1. загрузить аудио (WAV, MP3, OGG, M4A, FLAC и др.);
 2. выбрать нужный участок;
 3. обрезать запись;
 4. нормализовать громкость;
-5. очистить голос с помощью **Demucs**;
-6. автоматически распознать текст через **faster-whisper**;
-7. вручную скорректировать транскрипцию;
-8. сохранить готовый референс;
-9. сразу проверить результат через TTS.
+5. автоматически распознать текст через **faster-whisper**;
+6. вручную скорректировать транскрипцию;
+7. сохранить готовый референс;
+8. сразу проверить результат через TTS.
+
+Изменения в редакторе можно отменять сочетанием **Ctrl+Z** (до 6 шагов).
 
 Можно в любой момент восстановить оригинальный файл.
 
@@ -471,7 +471,6 @@ ws://127.0.0.1:8765/ws/overlay
 | **PyTorch**           | запуск моделей                           |
 | **CUDA**              | GPU-инференс                             |
 | **FastAPI / Uvicorn** | HTTP API и сервер                        |
-| **Demucs**            | очистка голосового референса             |
 | **faster-whisper**    | автоматическая транскрипция              |
 | **FFmpeg**            | обработка и конвертация аудио            |
 | **Streamer.bot**      | Twitch Events, Actions и воспроизведение |
@@ -531,7 +530,6 @@ ONNX Runtime не является основным вычислительным
 Проект использует следующие open-source компоненты:
 
 * [CosyVoice 3](https://github.com/FunAudioLLM/CosyVoice) — Alibaba / QwenAudio
-* [Demucs](https://github.com/facebookresearch/demucs) — Meta / Facebook Research, Alexandre Défossez
 * [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) — SYSTRAN
 * [FFmpeg](https://ffmpeg.org/) — FFmpeg Project
 * [ONNX Runtime](https://onnxruntime.ai/) — Microsoft

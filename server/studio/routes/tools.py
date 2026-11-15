@@ -12,8 +12,10 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
+from studio.services.audio_tools import AudioDecodeError, wav_frame_count
 
-def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, soundfile_module, torch_module, torchaudio_module, whisper_model_cls, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, characters_dir, get_active_character_id, logger=None):
+
+def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, soundfile_module, torch_module, whisper_model_cls, generation_lock, convert_to_clean_wav, clear_vram, generate_voice, has_speakable_content, sanitize_overlay_text, ws_manager, require_character, characters_dir, get_active_character_id, logger=None):
     router = APIRouter()
     log = logger or logging.getLogger(__name__)
     TEMP_DIR = temp_dir
@@ -22,7 +24,6 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
     np = numpy_module
     sf = soundfile_module
     torch = torch_module
-    torchaudio = torchaudio_module
     WhisperModel = whisper_model_cls
 
     @router.post("/api/trim_and_transcribe")
@@ -31,7 +32,6 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
         start: float = Form(0.0),
         end: float = Form(0.0)
     ):
-        temp_in = os.path.join(TEMP_DIR, f"trim_in_{uuid.uuid4().hex}.wav")
         temp_out = os.path.join(TEMP_DIR, f"trim_out_{uuid.uuid4().hex}.wav")
         whisper_model = None
         device = "cpu"
@@ -39,19 +39,18 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
             if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end < 0 or (end > 0 and end <= start):
                 raise HTTPException(status_code=400, detail="Некорректный диапазон обрезки аудио.")
     
-            with open(temp_in, "wb") as stream:
-                stream.write(audio.file.read())
-    
-            data, sr = sf.read(temp_in, dtype='float32')
-            if data.ndim > 1:
-                data = data[:, 0]
-    
-            start_frame = max(0, int(start * sr))
-            end_frame = min(len(data), int(end * sr)) if end > 0 else len(data)
-            if start_frame >= end_frame:
+            try:
+                clean = convert_to_clean_wav(audio.file.read(), start, end)
+            except AudioDecodeError as exc:
+                log.warning("Trim: не удалось прочитать аудио: %s", exc)
+                raise HTTPException(status_code=400, detail="Не удалось прочитать аудио. Проверьте формат файла.")
+            except RuntimeError as exc:  # нет FFmpeg / таймаут: ошибка сервера, а не файла
+                log.error("Trim: ошибка FFmpeg: %s", exc)
+                raise HTTPException(status_code=500, detail=str(exc))
+            if wav_frame_count(clean) == 0:  # диапазон за пределами файла
                 raise HTTPException(status_code=400, detail="Выбранный диапазон аудио пуст.")
-    
-            sf.write(temp_out, data[start_frame:end_frame], sr, format="WAV", subtype="PCM_16")
+            with open(temp_out, "wb") as stream:
+                stream.write(clean)
             device = "cuda" if torch.cuda.is_available() else "cpu"
             with generation_lock:
                 whisper_model = WhisperModel(
@@ -87,12 +86,11 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
                 del whisper_model
                 if device == "cuda":
                     clear_vram()
-            for path in (temp_in, temp_out):
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
+            if os.path.exists(temp_out):
+                try:
+                    os.remove(temp_out)
+                except OSError:
+                    pass
     
     @router.post("/api/normalize_audio")
     def api_normalize_audio(
@@ -102,13 +100,11 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
         if not math.isfinite(target_gain) or not 0.1 <= target_gain <= 1.0:
             raise HTTPException(status_code=400, detail="target_gain должен быть в диапазоне 0.1–1.0.")
         try:
-            in_bio = io.BytesIO(audio.file.read())
+            # любой формат -> mono 24 kHz PCM16 (то же, что получит итоговый референс)
+            in_bio = io.BytesIO(convert_to_clean_wav(audio.file.read()))
             data, sr = sf.read(in_bio, dtype='float32')
             if data.size == 0:
                 raise HTTPException(status_code=400, detail="Аудиофайл пуст.")
-            if data.ndim > 1:
-                data = data[:, 0]
-    
             data = data - np.mean(data)
             peak = np.max(np.abs(data))
             if peak > 0.0001:
@@ -119,72 +115,12 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
             return Response(content=out_bio.getvalue(), media_type="audio/wav")
         except HTTPException:
             raise
+        except AudioDecodeError as exc:
+            log.warning("Не удалось прочитать аудио: %s", exc)
+            raise HTTPException(status_code=400, detail="Не удалось прочитать аудио. Проверьте формат файла.")
         except Exception as exc:
             log.exception("Audio normalization failed")
             raise HTTPException(status_code=500, detail=f"Ошибка нормализации: {str(exc)}")
-    
-    @router.post("/api/isolate_vocal")
-    def api_isolate_vocal(
-        audio: UploadFile = File(...),
-        shifts: int = Form(2)
-    ):
-        if not 1 <= shifts <= 10:
-            raise HTTPException(status_code=400, detail="shifts должен быть в диапазоне 1–10.")
-        device = "cpu"
-        model = None
-        try:
-            raw_bytes = audio.file.read()
-            in_bio = io.BytesIO(raw_bytes)
-            from demucs.pretrained import get_model
-            from demucs.apply import apply_model
-    
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            with generation_lock:
-                model = get_model("htdemucs")
-                model.to(device)
-                model.eval()
-    
-                wav, orig_sr = torchaudio.load(in_bio)
-                if wav.shape[0] == 1:
-                    wav_stereo = wav.repeat(2, 1)
-                else:
-                    wav_stereo = wav[:2, :]
-    
-                if orig_sr != model.samplerate:
-                    resample_to_model = torchaudio.transforms.Resample(orig_sr, model.samplerate)
-                    wav_input = resample_to_model(wav_stereo)
-                else:
-                    wav_input = wav_stereo
-    
-                wav_input = wav_input.to(device)
-                with torch.no_grad():
-                    sources = apply_model(
-                        model, wav_input[None], device=device,
-                        shifts=shifts, split=True, progress=False
-                    )[0]
-    
-                vocal_idx = model.sources.index("vocals")
-                vocals = sources[vocal_idx]
-                vocal_mono = vocals[0:1, :]
-                if orig_sr != model.samplerate:
-                    resample_back = torchaudio.transforms.Resample(model.samplerate, orig_sr).to(device)
-                    vocal_mono = resample_back(vocal_mono)
-    
-                vocal_np = vocal_mono.squeeze(0).cpu().numpy()
-                out_bio = io.BytesIO()
-                sf.write(out_bio, vocal_np, orig_sr, format="WAV", subtype="PCM_16")
-    
-            return Response(content=out_bio.getvalue(), media_type="audio/wav")
-        except HTTPException:
-            raise
-        except Exception as exc:
-            log.exception("Demucs vocal isolation failed")
-            raise HTTPException(status_code=500, detail=f"Ошибка очистки голоса: {str(exc)}")
-        finally:
-            if model is not None:
-                del model
-            if device == "cuda":
-                clear_vram()
     
     @router.post("/api/convert_to_telegram_ogg")
     def api_convert_to_telegram_ogg(audio: UploadFile = File(...)):
@@ -253,9 +189,12 @@ def create_tools_router(temp_dir, whisper_path, ffmpeg_path, numpy_module, sound
             try:
                 raw_draft = voice_file.file.read()
                 clean_draft = convert_to_clean_wav(raw_draft)
-            except RuntimeError as e:
+            except AudioDecodeError as e:
                 log.warning("Draft audio conversion failed: %s", e)
                 raise HTTPException(status_code=400, detail="Не удалось декодировать аудиофайл сэмпла.")
+            except RuntimeError as e:  # нет FFmpeg / таймаут: ошибка сервера, а не файла
+                log.error("Draft audio: ошибка FFmpeg: %s", e)
+                raise HTTPException(status_code=500, detail=str(e))
     
             temp_voice = os.path.join(TEMP_DIR, f"draft_{uuid.uuid4().hex}.wav")
             with open(temp_voice, "wb") as f:

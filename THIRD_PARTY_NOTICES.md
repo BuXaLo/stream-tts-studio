@@ -1,55 +1,90 @@
 # Third-party notices and license inventory
 
-**Status:** source-level inventory complete for identified components; portable-bundle compliance remains unverified  
+**Status:** practical best-effort inventory; not a legal opinion or exhaustive SBOM  
 **Last reviewed:** 2026-11-16  
-**Applies to:** Stream TTS Studio source repository and the separately supplied portable runtime described in [docs/PORTABLE_RUNTIME.md](docs/PORTABLE_RUNTIME.md).
+**Applies to:** Stream TTS Studio source repository and the portable runtime described in [docs/PORTABLE_RUNTIME.md](docs/PORTABLE_RUNTIME.md).
 
 ## Scope
 
-The MIT License in the repository applies only to original Stream TTS Studio code and documentation authored for this project, unless a file says otherwise. It does not replace the license of third-party libraries, models, binaries, fonts, or other assets.
+The root [MIT License](LICENSE) applies to original Stream TTS Studio code and documentation. It does not relicense third-party components bundled with the portable distribution.
 
-This file is an inventory of components currently known from the source tree and the owner's portable-runtime snapshot. It is not a complete Software Bill of Materials (SBOM), legal opinion, or proof that every redistribution obligation has been satisfied.
+The portable runtime was inherited from the CosyVoice 3 portable setup and subsequently updated for this project. This inventory records the main known components and the information collected from the actual runtime. It does not attempt to enumerate every transitive Python package individually.
 
-## Known components
+## Portable base and main components
 
-| Component | Known version / revision | License information | Verification status |
+| Component | Known version / source | License information | Notes |
 |---|---|---|---|
-| Stream TTS Studio original code | Current repository revision | MIT | See root `LICENSE`; applies only to original project work |
-| CosyVoice upstream code | CosyVoice 3 | Apache License 2.0 | Upstream repository identifies Apache-2.0; exact vendored/runtime revision and all `third_party` contents still need comparison |
-| Fun-CosyVoice3-0.5B-2512 | Model files under `pretrained_models/Fun-CosyVoice3-0.5B` | Apache-2.0 per official Hugging Face model card | License metadata verified; local snapshot not pinned to an immutable model revision as a whole. `llm.pt` SHA-256 was checked against the official file in the project diagnostics, but this does not pin all model files |
-| PyTorch | 2.7.1+cu128 | PyPI metadata: BSD-3-Clause; wheel also contains license files for bundled third-party components | Top-level package metadata verified; wheel's bundled license files and CUDA/native dependencies must be retained and inventoried |
-| Python | 3.10.11 portable | Python Software Foundation License | Runtime version identified; distribution files and notices should be retained |
-| FFmpeg | 7.1.1, Gyan full static build | GPLv3, as stated by Gyan for its static builds | Build family and version recorded from local runtime snapshot; exact archive identity, SHA-256, build configuration, corresponding source and shipped GPL materials still missing |
-| CUDA / cuDNN | CUDA build 12.8; cuDNN 9.7.1 in the owner's snapshot | NVIDIA proprietary license terms | Exact redistributable files and applicable NVIDIA license texts need inventory |
-| Other Python packages and native dependencies | See version snapshot in `docs/PORTABLE_RUNTIME.md` | Varies by package | Incomplete; full package/dependency inventory and each license/NOTICE remain to be collected |
-| Model auxiliaries, tokenizer/text-normalization assets, fonts and other runtime assets | Portable runtime folders | Varies by component | Not fully inventoried |
+| Stream TTS Studio original code | Current repository revision | MIT | See root `LICENSE` |
+| Original portable base | [mortimerme/repocollect](https://huggingface.co/mortimerme/repocollect), `cosyvoice3-0529.7z` | Contains third-party components under their respective licenses | Identified in project README as the starting point of the portable setup |
+| CosyVoice | CosyVoice 3 | Apache-2.0 | Upstream project license; bundled dependencies retain their own licenses |
+| Matcha-TTS | Upstream dependency of CosyVoice | MIT | Separate upstream component |
+| Fun-CosyVoice3-0.5B-2512 | Model card | Apache-2.0 per official model card | Local model snapshot is not pinned as a whole to an immutable revision |
+| Python | 3.10.11 | Python Software Foundation License | Portable interpreter; retain the license files supplied with the runtime |
+| PyTorch | 2.7.1+cu128 | BSD-3-Clause | PyTorch distribution also contains notices/licenses for bundled components |
+| CUDA / cuDNN | CUDA 12.8; cuDNN 9.7.1 in the recorded environment | NVIDIA license terms | NVIDIA components are subject to their own terms |
+| FFmpeg | 7.1.1-full_build-www.gyan.dev | GPLv3 build | Exact local build details are recorded below |
 
-## Important FFmpeg note
+## Runtime inventory snapshot
 
-The owner's snapshot identifies `ffmpeg.exe` as FFmpeg 7.1.1 from Gyan's **full** build. Gyan's build page states that its static builds are licensed under GPLv3. Before redistributing that binary, the distributor must identify the exact build/configuration and comply with the applicable GPLv3 obligations, including providing the required license text, notices and corresponding source or a valid means of obtaining it. Do not assume that the Studio MIT license covers FFmpeg.
+A read-only inventory was collected from the portable environment:
 
-The exact `ffmpeg -buildconf` output, binary SHA-256, original Gyan archive identity, corresponding source archive/revision and accompanying GPL materials were not included in the runtime snapshot. Therefore this repository does not yet claim that the FFmpeg redistribution checklist is complete.
+- Python version: **3.10.11**
+- Installed Python distributions: **188**
+- Files named `LICENSE`, `NOTICE`, `COPYING` or `EULA` found under the runtime: **284**
+- Package metadata contains license information for most, but not all, distributions. Missing metadata is not treated as evidence that a package has no license.
+- The runtime includes packages with different license families, including MIT, BSD, Apache-2.0, MPL-2.0, LGPL and vendor-specific terms. Their bundled license/notice files should be retained with the runtime.
 
-## Provenance inherited from the portable base archive
+Examples visible in the collected package metadata include:
 
-The project README identifies `mortimerme/repocollect` (`cosyvoice3-0529.7z`) as the starting portable CosyVoice archive. That provenance is recorded, but the exact archive revision, its complete license set, and the licenses of files copied or modified from it have not been independently inventoried. The portable archive is outside Git; therefore this repository cannot claim complete licensing for it from source inspection alone. The archive must be unpacked and audited before its license status can be marked complete.
+| Package | Version | Declared license metadata |
+|---|---:|---|
+| torch | 2.7.1+cu128 | BSD-3-Clause |
+| frozendict | 2.4.7 | LGPL v3 |
+| lameenc | 1.8.4 | LGPL-3.0-or-later |
+| soxr | 1.1.0 | LGPL-2.1-or-later |
+| bidict | 0.23.1 | MPL 2.0 |
+| certifi | 2026.5.20 | MPL-2.0 |
+| intel-openmp | 2021.4.0 | Intel End User License Agreement for Developer Tools |
+| mkl | 2021.4.0 | Intel Simplified Software License |
+| tbb | 2021.13.1 | Intel Simplified Software License |
 
-## Required completion work before publishing a portable archive
+This is a representative record, not a complete package-by-package license list. The collected machine-readable inventory is an audit aid and is not committed as part of the application.
 
-1. Generate a complete inventory from the exact portable Python environment (direct and transitive Python packages, versions, license metadata); retain each package's bundled LICENSE/NOTICE files.
-2. Inventory every bundled executable, DLL, native library, model, tokenizer, auxiliary model, font and asset under the portable runtime.
-3. Record exact source URLs and immutable revisions/hashes for components where available.
-4. Copy required LICENSE, NOTICE, attribution and other license texts into the distribution in the locations required by their licenses.
-5. For FFmpeg, record `-version`, `-buildconf`, binary SHA-256, exact Gyan archive/build identity, relevant source and GPLv3 compliance materials. Gyan identifies its static builds as GPLv3; do not redistribute the binary without satisfying the applicable GPLv3 source and notice requirements.
-6. Review NVIDIA CUDA/cuDNN redistribution terms for the exact files shipped.
-7. Re-run the inventory whenever the portable archive or any included component changes.
+## FFmpeg
+
+The local executable was identified as:
+
+```text
+ffmpeg version 7.1.1-full_build-www.gyan.dev
+built with gcc 14.2.0
+--enable-gpl
+--enable-version3
+--enable-static
+```
+
+The build configuration enables a broad set of external libraries, including x264, x265, libvpx, libaom, libass, libopus and libsoxr.
+
+**Local executable SHA-256:**
+
+```text
+B1383F5D07470D503EDECDAEE4BDDC5891E986E916A698299B357F79CFE445FD
+```
+
+Gyan identifies its full static builds as GPLv3. The runtime contains `tools/LICENSE.GPL.txt`. The exact original Gyan archive and corresponding-source package for this binary have not been retained in the project audit, so this file does not claim that every GPL redistribution requirement has been independently verified. See [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/) and the [FFmpeg legal page](https://ffmpeg.org/legal.html).
+
+## Distribution note
+
+The portable runtime is a bundle of independently licensed upstream components; it is not wholly covered by the Studio MIT License. Keep the upstream license and notice files shipped with the runtime. The inventory above records what is known from the source references and the actual runtime snapshot without claiming a formal legal audit or complete SBOM.
+
+For ordinary development of the Studio source, this inventory is informational and does not block work on the application. If the portable bundle is redistributed, the distributor remains responsible for observing the applicable third-party terms, particularly the GPL terms for this FFmpeg build and NVIDIA's terms for CUDA/cuDNN.
 
 ## Source references
 
-- [CosyVoice upstream repository](https://github.com/FunAudioLLM/CosyVoice) — Apache-2.0 project licensing; verify notices and submodules for the exact revision used.
-- [Fun-CosyVoice3-0.5B-2512 model card](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512) — model-card metadata declares Apache-2.0.
-- [PyTorch 2.7.1 on PyPI](https://pypi.org/project/torch/2.7.1/) — BSD-style license metadata.
-- [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/) — states static builds are GPLv3.
-- [Python License](https://docs.python.org/3/license.html) — Python license text and terms.
-
-**Distribution status:** the original Studio source license is identified. Known upstream licenses are documented. The complete license compliance of the portable distribution — including inherited base archive, all Python/native dependencies, models, FFmpeg and NVIDIA components — is **not yet verified**. Do not describe the complete portable archive as MIT-licensed.
+- [CosyVoice upstream](https://github.com/FunAudioLLM/CosyVoice)
+- [Matcha-TTS upstream](https://github.com/shivammehta25/Matcha-TTS)
+- [Fun-CosyVoice3-0.5B-2512 model card](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512)
+- [Original portable base archive](https://huggingface.co/mortimerme/repocollect)
+- [PyTorch 2.7.1](https://pypi.org/project/torch/2.7.1/)
+- [Python license](https://docs.python.org/3/license.html)
+- [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/)
+- [FFmpeg legal information](https://ffmpeg.org/legal.html)

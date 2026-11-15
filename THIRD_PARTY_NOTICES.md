@@ -74,9 +74,11 @@ Gyan identifies its full static builds as GPLv3. The runtime contains `tools/LIC
 
 ## Distribution note
 
-The portable runtime is a bundle of independently licensed upstream components; it is not wholly covered by the Studio MIT License. Keep the upstream license and notice files shipped with the runtime. The inventory above records what is known from the source references and the actual runtime snapshot without claiming a formal legal audit or complete SBOM.
+The portable runtime is a bundle of independently licensed upstream components; it is not wholly covered by the Studio MIT License. The original `mortimerme/repocollect` Hugging Face repository used as the portable starting point contains the `cosyvoice3-0529.7z` archive but, at the time checked (2026-11-16), its top-level file list has no separate `LICENSE` or `THIRD_PARTY_NOTICES` file. This describes the upstream repository's documentation practice; it does **not** prove that the contents of the archive are license-free or that redistribution has no conditions.
 
-For ordinary development of the Studio source, this inventory is informational and does not block work on the application. If the portable bundle is redistributed, the distributor remains responsible for observing the applicable third-party terms, particularly the GPL terms for this FFmpeg build and NVIDIA's terms for CUDA/cuDNN.
+This document is a lightweight reference for maintainers, not a complete SBOM or a legal audit. A package-by-package inventory of every transitive Python dependency is not a release requirement for this small, free, non-commercial local project. Keep the upstream license/notice files already supplied with the runtime and do not present third-party components as Studio's own work.
+
+For personal use of the local Studio source/runtime, no separate redistribution checklist is needed. If the complete portable archive is copied or published for other people, the applicable third-party terms still matter even when the download is free. In particular, the included Gyan FFmpeg executable is identified as a GPLv3 build; distribution of that binary requires following the relevant GPLv3 conditions, including the corresponding-source requirements. NVIDIA CUDA/cuDNN and other bundled components remain subject to their own terms. This is a practical warning, not a claim that a full legal review has been completed.
 
 ## Source references
 

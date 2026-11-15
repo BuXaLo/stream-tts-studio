@@ -82,7 +82,7 @@ GET `/api/da/config` не раскрывает сохранённый secret и 
 
 - Синхронный I/O worker менять только при измеренной задержке/блокировке; сохранять таймауты, retry, reconnect и порядок событий.
 - **Выполнено:** структурное разделение backend завершено (этап S7): маршруты вынесены в `server/studio/routes/`, общая логика — в `server/studio/core/` и `server/studio/services/`; `server/app.py` оставлен bootstrap/entrypoint. Регрессионные тесты фиксируют HTTP/WebSocket route contract и граф импортов. Новое разделение модулей рассматривать только при конкретной необходимости и с отдельными тестами.
-- Зафиксировать inventory portable archive отдельно (версии Python, CUDA, PyTorch, CosyVoice, FFmpeg, модели).
+- **Снимок зафиксирован:** версии Python, CUDA/PyTorch, GPU/драйвера, FFmpeg, основные пакеты, модели и размеры каталогов portable runtime записаны в [PORTABLE_RUNTIME.md](PORTABLE_RUNTIME.md). Обновлять при намеренном изменении runtime.
 - **Выполнено:** настроен GitHub Actions CI для compileall, pytest и JavaScript syntax checks. GPU/runtime-интеграционные проверки по-прежнему выполняются отдельно в целевой Windows-среде.
 
 ## Этап 8 — жизненный цикл сбора startup-журнала Monitor — выполнено
@@ -184,7 +184,7 @@ GET `/api/da/config` не раскрывает сохранённый secret и 
 | S4b: обработка ошибки озвучки доната в generated C# | Текущей реализации достаточно | Закрыто | Дополнительный fallback и усложнение не требуются |
 | Полный smoke test `/speak`, OBS, Streamer.bot, DonationAlerts и graceful shutdown | Частично | Высокий | Проверить на копии portable-установки |
 | Upload limits | Отложено | Средний | Замерить реальные файлы и согласовать значения |
-| Inventory portable runtime | Частично | Средний | Зафиксировать версии компонентов архива отдельно от Git |
+| Inventory portable runtime | Снимок зафиксирован | Средний | Обновлять документ при намеренном изменении runtime |
 | S9: FastAPI lifespan | Не реализовано | Низкий | Проверить версию FastAPI и lifecycle worker |
 | S7b: разделение `builder.js` | Необязательно | Низкий | Только при необходимости, с побайтовыми эталонами generated C# |
 | S8: GPU/производительность | Отложено | Последний | Только после baseline и A/B-тестов |

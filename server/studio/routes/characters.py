@@ -103,6 +103,11 @@ def create_characters_router(load_presets, save_presets, get_active_character_id
         if not char_id:
             raise HTTPException(status_code=400, detail="Недопустимый ID персонажа.")
 
+        if speed < 0.5:
+            speed = 0.5
+        elif speed > 2.0:
+            speed = 2.0
+
         clean_wav = None
         if voice_file:
             try:

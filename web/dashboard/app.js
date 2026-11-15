@@ -69,7 +69,7 @@ function undoVoiceStep() {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.code !== 'KeyZ') return;
   const tag = (e.target && e.target.tagName) || '';
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (e.target && e.target.isContentEditable)) return;
   if (voiceHistory.length === 0) return;

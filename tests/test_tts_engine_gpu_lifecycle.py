@@ -1,4 +1,3 @@
-import gc
 import io
 import threading
 import wave

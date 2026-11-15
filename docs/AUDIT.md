@@ -92,8 +92,8 @@ Backend разнесён по `server/studio/core/`, `server/studio/services/` �
 - A-01/A-07: динамический текст Overlay/Dashboard preview формируется безопасными DOM nodes; OAuth callback экранирует error/body/exception.
 - A-03: client_secret маскируется в GET API, пустое значение в POST не затирает сохранённый секрет.
 - A-04: OAuth state одноразовый, случайный, TTL 10 минут.
-- A-02: полноценная API-аутентификация признана избыточной и неактуальной для локального portable-продукта; пересмотреть перед выходом на внешний рынок. Текущие loopback и same-origin меры сохранены.
-- A-06: параметры аудиообработки валидируются, FFmpeg ограничен timeout 120 секунд; upload-size limits намеренно не введены до согласования реальных размеров файлов.
+- A-02: полноценная API-аутентификация признана избыточной для локального portable-продукта; бесплатное распространение само по себе не требует токена. Пересматривать только при переходе к hosted/cloud или иной внешней сетевой модели. Текущие loopback и same-origin меры сохранены.
+- A-06: параметры аудиообработки валидируются, FFmpeg ограничен timeout 120 секунд; искусственные upload-size/duration limits сознательно не планируются.
 - A-08: backend разнесён по `studio/core`, `studio/services`, `studio/routes`; `app.py` оставлен entrypoint.
 
 GitHub Actions выполняет compileall, pytest и JavaScript syntax checks на Python 3.10.11. Успешный CI не заменяет проверку portable embeddable Python, CosyVoice/GPU, OBS и Streamer.bot. Эти пункты остаются локальной приёмкой.

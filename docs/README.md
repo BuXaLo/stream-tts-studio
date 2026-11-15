@@ -40,7 +40,7 @@
 
 ## Лицензирование и поставка
 
-MIT License относится к оригинальному коду и документации проекта. Она не заменяет лицензии сторонних библиотек, моделей и компонентов portable runtime. Реестр [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) пока неполный: перед публикацией/передачей portable-архива нужно завершить inventory точных бинарников, Python-пакетов, моделей, шрифтов и обязательных уведомлений.
+MIT License относится только к оригинальному коду и документации Studio. Она не лицензирует целиком portable archive. Известные upstream-лицензии и открытые пункты собраны в [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). До публикации/передачи portable-архива необходимо проверить исходный `mortimerme/repocollect` archive, точный состав runtime, все Python/native dependencies, модели, шрифты, FFmpeg и NVIDIA-компоненты; сохранить применимые LICENSE/NOTICE и выполнить условия GPLv3 для Gyan FFmpeg full static build.
 
 ## Как читать результаты аудита
 Различайте:

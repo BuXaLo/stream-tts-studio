@@ -1,0 +1,116 @@
+Dependencies and build toolchain list for ffmpeg-7.1.1-full_build-www.gyan.dev
+
+AMF                 v1.4.36.0                              16f7d73e0b      https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git
+aom                 v3.12.0-20-g20f697ad51                 20f697ad51      https://aomedia.googlesource.com/aom
+aribb24             v1.0.3-5-g5e9be27                      5e9be272f9      https://github.com/nkoriyama/aribb24.git
+avisynth+           v3.7.3-211-gb038d022                   b038d0225e      https://github.com/AviSynth/AviSynthPlus.git
+codec2              1.2.0-106-g96e8a19c                    96e8a19c24      https://github.com/drowe67/codec2.git
+dav1d               1.5.1-2-gcaef968                       caef968117      https://code.videolan.org/videolan/dav1d.git
+davs2               1.7-1-gb41cf11                         b41cf11745      https://github.com/pkuvcl/davs2.git
+dvdnav              6.1.1-23-g9831fe0                      9831fe0148      https://code.videolan.org/videolan/libdvdnav.git
+dvdread             6.1.3-9-gba2227b                       ba2227bb86      https://code.videolan.org/videolan/libdvdread.git
+ffnvcodec           n13.0.19.0-1-gf2fb9b3                  f2fb9b36d5      https://github.com/FFmpeg/nv-codec-headers.git
+flite               v2.2-55-g6c9f20d                       6c9f20dc91      https://github.com/festvox/flite.git
+fontconfig          2.16.0-17-g25f58a5                     25f58a52b0      https://gitlab.freedesktop.org/fontconfig/fontconfig.git
+freetype            VER-2-13-3-71-g5d4e649                 5d4e649f74      https://github.com/freetype/freetype.git
+frei0r              v2.3.3-9-g2328ce3                      2328ce3802      https://github.com/dyne/frei0r.git
+fribidi             v1.0.16-2-gb28f43b                     b28f43bd3e      https://github.com/fribidi/fribidi.git
+game-music-emu      0.6.3                                  daaa7c67dc      https://github.com/libgme/game-music-emu.git
+harfbuzz            10.4.0-151-g79c991e1                   79c991e143      https://github.com/harfbuzz/harfbuzz.git
+lc3                 1.1.3                                  9f1e206b34      https://github.com/google/liblc3.git
+lensfun             v0.3.95-1659-g956de215                 956de215cb      https://github.com/lensfun/lensfun.git
+libaribcaption      1.1.1                              27cf3cab26      https://github.com/xqq/libaribcaption
+libass              0.17.3-79-g1b69955                     1b69955902      https://github.com/libass/libass.git
+libbluray           1.3.4-1-gc1550e5                       c1550e5cfd      https://code.videolan.org/videolan/libbluray.git
+libilbc             v3.0.4-346-g6adb26d4a4                 6adb26d4a4      https://github.com/TimothyGu/libilbc.git
+libjxl              v0.11-snapshot-188-g798512a9           798512a9e8      https://github.com/libjxl/libjxl.git
+libmysofa           v1.3.1-52-gdd315a8                     dd315a8ec1      https://github.com/hoene/libmysofa.git
+libplacebo          v7.349.0-38-g02f4f98                   02f4f98623      https://code.videolan.org/videolan/libplacebo.git
+librist             0.2.12                                 af5d2041fb      https://code.videolan.org/rist/librist.git
+libsoxr             0.1.3                                  945b592b70      https://github.com/nanake/libsoxr.git
+libvpl              2.14                                   80ea0a5ebd      https://github.com/intel/libvpl
+libwebp             v1.5.0-12-g1d86819f                    1d86819f49      https://chromium.googlesource.com/webm/libwebp
+libxml2             v2.13.0-642-gd96911f1                  d96911f100      https://github.com/GNOME/libxml2.git
+ogg                 v1.3.5-10-g7cf42ea                     7cf42ea17a      https://github.com/xiph/ogg.git
+opencl-headers      v2024.10.24-3-g2c9ff0c                 2c9ff0ccf6      https://github.com/KhronosGroup/OpenCL-Headers.git
+opencl-loader       v2024.10.24-1-g9228024                 92280246c8      https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
+openmpt             libopenmpt-0.6.22-19-g9ae5dfb5b        9ae5dfb5b6      https://github.com/OpenMPT/openmpt.git
+opus                v1.5.2-73-gc79a9bd1                   c79a9bd1dd      https://github.com/xiph/opus.git
+qrencode            4.1.1                                  715e29fd4c      https://github.com/fukuchi/libqrencode
+quirc               1.2                                    fd13bfbf4f      https://github.com/dlbeer/quirc
+rav1e               p20250225                              38879ab5a5      https://github.com/xiph/rav1e.git
+rubberband          v1.8.1                                 e007689416      https://github.com/m-ab-s/rubberband
+SDL                 release-2.32.0-15-g22a87a22c           22a87a22ca      https://github.com/libsdl-org/SDL.git
+shaderc             v2025.1-1-g8be073a                     8be073a9ff      https://github.com/google/shaderc.git
+shine               3.1.1                                  ab5e3526b6      https://github.com/toots/shine.git
+speex               Speex-1.2.1-45-g4e231b4                4e231b45ae      https://github.com/xiph/speex.git
+srt                 v1.5.4-25-g697dce0                     697dce0978      https://github.com/Haivision/srt.git
+SVT-AV1             v3.0.0-18-gd653d6c1                    d653d6c193      https://gitlab.com/AOMediaCodec/SVT-AV1.git
+uavs3d              v1.1-47-g1fd0491                       1fd04917cf      https://github.com/uavs3/uavs3d.git
+vaapi               2.23.0.                                3da1ba7e3c      https://github.com/intel/libva
+vidstab             v1.1.1-14-gd2d55a8                     d2d55a8988      https://github.com/georgmartius/vid.stab.git
+vmaf                v3.0.0-107-g4db7c0c8                   4db7c0c81f      https://github.com/Netflix/vmaf.git
+vorbis              v1.3.7-10-g84c02369                    84c023699c      https://github.com/xiph/vorbis.git
+vpx                 v1.15.0-65-g95afae324                  95afae3249      https://chromium.googlesource.com/webm/libvpx
+vulkan-loader       v1.4.310                               8491f31d36      https://github.com/KhronosGroup/Vulkan-Loader.git
+vvenc               v1.13.0-15-g66bf626                    66bf626e1f      https://github.com/fraunhoferhhi/vvenc.git
+x264                v0.164.3204                            c80f8a2815      https://code.videolan.org/videolan/x264.git
+x265                4.1-110-g0e0eee580                     0e0eee580c      https://github.com/Multicorewareinc/x265.git
+xavs2               1.4                                    eae1e8b9d1      https://github.com/pkuvcl/xavs2.git
+xevd                0.5.0                                  d4331b73db      https://github.com/mpeg5/xevd
+xeve                0.5.1                                  7b214663da      https://github.com/mpeg5/xeve
+zimg                release-3.0.5-197-g9a9a8ea             9a9a8eab3e      https://github.com/sekrit-twc/zimg.git
+zvbi                v0.2.43-8-g348a442                     348a44219c      https://github.com/zapping-vbi/zvbi.git
+        
+mingw-w64-x86_64-chromaprint               1.5.1-2
+mingw-w64-x86_64-gnutls                    3.8.7-1
+mingw-w64-x86_64-gsm                       1.0.22-1
+mingw-w64-x86_64-ladspa-sdk                1.17-1
+mingw-w64-x86_64-lame                      3.100-3
+mingw-w64-x86_64-lcms2                     2.16-1
+mingw-w64-x86_64-libbs2b                   3.1.0-2
+mingw-w64-x86_64-libcaca                   0.99.beta20-5
+mingw-w64-x86_64-libcdio-paranoia          10.2+2.0.0-2
+mingw-w64-x86_64-libmodplug                0.8.9.0-4
+mingw-w64-x86_64-libssh                    0.11.1-1
+mingw-w64-x86_64-libtheora                 1.1.1-7
+mingw-w64-x86_64-libunibreak                6.1-1
+mingw-w64-x86_64-libvo-amrwbenc             0.1.3-2
+mingw-w64-x86_64-opencore-amr               0.1.6-1
+mingw-w64-x86_64-openjpeg2                  2.5.2-1
+mingw-w64-x86_64-snappy                    1.2.1-1
+mingw-w64-x86_64-twolame                   0.4.0-2
+mingw-w64-x86_64-xvidcore                  1.3.7-4
+mingw-w64-x86_64-zeromq                   4.3.5-1
+        
+mingw-w64-x86_64-binutils                  2.43.1-1
+mingw-w64-x86_64-brotli                    1.1.0-2
+mingw-w64-x86_64-bzip2                     1.0.8-3
+mingw-w64-x86_64-cargo-c                   0.10.4-1
+mingw-w64-x86_64-cmake                     3.30.4-1
+mingw-w64-x86_64-crt                       12.0.0.r335.g6cd6fee9c-1
+mingw-w64-x86_64-expat                     2.6.3-1
+mingw-w64-x86_64-gcc                       14.2.0-1
+mingw-w64-x86_64-glib2                     2.82.1-1
+mingw-w64-x86_64-gmp                       6.3.0-2
+mingw-w64-x86_64-headers                   12.0.0.r335.g6cd6fee9c-1
+mingw-w64-x86_64-libarchive                3.7.6-1
+mingw-w64-x86_64-libffi                    3.4.6-1
+mingw-w64-x86_64-libgcrypt                 1.11.0-2
+mingw-w64-x86_64-libiconv                 1.17-4
+mingw-w64-x86_64-libidn2                  2.3.7-1
+mingw-w64-x86_64-libstdc++                 14.2.0-1
+mingw-w64-x86_64-libtasn1                  4.19.0-1
+mingw-w64-x86_64-libwinpthread             12.0.0.r335.g6cd6fee9c-1
+mingw-w64-x86_64-make                      4.4.1-1
+mingw-w64-x86_64-meson                     1.5.2-1
+mingw-w64-x86_64-nasm                      2.16.03-1
+mingw-w64-x86_64-nettle                    3.10-1
+mingw-w64-x86_64-ninja                    1.12.1-1
+mingw-w64-x86_64-rust                      1.81.0-5
+mingw-w64-x86_64-tools                     12.0.0.r335.g6cd6fee9c-1
+mingw-w64-x86_64-xz                        5.6.3-1
+mingw-w64-x86_64-zlib                      1.3.1-1
+mingw-w64-x86_64-zstd                     1.5.6-2
+
+mingw packages can be obtained from https://packages.msys2.org/packages/

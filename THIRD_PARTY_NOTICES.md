@@ -73,9 +73,11 @@ B1383F5D07470D503EDECDAEE4BDDC5891E986E916A698299B357F79CFE445FD
 
 The archive's `README.txt` identifies the build as GPL v3 and records its configuration and a broad list of statically linked external libraries. The archive also contains a `LICENSE` file. The runtime contains `tools/LICENSE.GPL.txt`.
 
-The official archive and executable identity are therefore confirmed. A separate complete corresponding-source package for FFmpeg and every statically linked external library has not been collected or independently verified. This inventory records that limitation and does not claim a complete reproducible build package or legal audit.
+The official archive and executable identity are confirmed. Gyan subsequently supplied a dependency/build-toolchain manifest with repository URLs and commit hashes and confirmed by email that no functional patches were applied and that the standard build instructions in the respective dependency repositories are sufficient. The manifest is preserved verbatim in [licenses/ffmpeg/ffmpeg-7.1.1-full_build-manifest.txt](licenses/ffmpeg/ffmpeg-7.1.1-full_build-manifest.txt); the binary identity, maintainer clarification and source-retrieval notes are recorded in [licenses/ffmpeg/BUILD_INFO.md](licenses/ffmpeg/BUILD_INFO.md).
 
-References: [Gyan FFmpeg 7.1.1 release](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1), [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/), [FFmpeg legal page](https://ffmpeg.org/legal.html).
+This is a materially stronger source trail than was previously available, but it is not an independently reproduced build. The manifest identifies source locations and revisions; it does not contain the source trees themselves, and this project has not yet independently fetched every pinned revision/package or verified the complete build-toolchain materials. The manifest also must not be read as proof that every listed dependency is linked into the FFmpeg executable. Gyan specifically cautioned that embedded strings naming a library do not establish that the library object is present. Retain the GPLv3 text supplied with the portable runtime at `cosyvoice3/tools/LICENSE.GPL.txt` alongside FFmpeg in redistributed packages.
+
+References: [Gyan FFmpeg 7.1.1 release](https://github.com/GyanD/codexffmpeg/releases/tag/7.1.1), [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/), [FFmpeg legal page](https://ffmpeg.org/legal.html), [GNU GPLv3 text](https://www.gnu.org/licenses/gpl-3.0.html).
 
 ## Distribution note
 

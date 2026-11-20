@@ -156,7 +156,7 @@ Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
 
 ### WebView2 и необязательные Python-пакеты
 
-Для основного режима нужны WebView2 Runtime (это отдельный компонент, не сам браузер Edge) и следующие пакеты в portable-окружении `cosyvoice3\upy`:
+Для основного режима нужны WebView2 Runtime (это отдельный компонент, не сам браузер Edge) и пакет `pywebview` в portable-окружении `cosyvoice3\upy`:
 
 ```bat
 cosyvoice3\upy\python.exe -m pip install --no-deps pywebview==6.2.1

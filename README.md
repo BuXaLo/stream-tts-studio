@@ -36,7 +36,7 @@
 start_studio.bat
 ```
 
-Если `python.exe` или `pythonw.exe` отсутствует, `start_studio.bat` автоматически вызывает резервный `start_server.bat`.
+Если отсутствует только `pythonw.exe`, но portable `python.exe` доступен, `start_studio.bat` переключается на консольный `start_server.bat`. Если отсутствует сам `python.exe`, запустить backend не сможет ни один режим.
 
 При запуске Launcher:
 

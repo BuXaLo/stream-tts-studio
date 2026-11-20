@@ -30,9 +30,11 @@ SHA256 четырёх основных файлов модели сверены 
 
 ## 2. Запуск
 
-Рекомендуемый запуск — корневой `start_studio.bat`: он запускает `server\launcher.pyw` через portable `pythonw.exe`, создаёт обязательный системный трей, запускает backend через portable `python.exe` и выбирает режим окна монитора. Основной режим — `pywebview` на WebView2; если пакет или WebView2 Runtime недоступен, Launcher использует Edge с `--app=`, а при отсутствии Edge — браузер по умолчанию. Если `python.exe` или `pythonw.exe` отсутствует, батник переключается на резервный `start_server.bat`. Прямой `start_server.bat` запускает `server\app.py` через portable `python.exe` с консольным выводом.
+Рекомендуемый запуск — корневой `start_studio.bat`: он запускает `server\launcher.pyw` через portable `pythonw.exe`, создаёт обязательный системный трей, запускает backend через portable `python.exe` и выбирает режим окна монитора. Основной режим — `pywebview` на WebView2; если пакет или WebView2 Runtime недоступен, Launcher использует Edge с `--app=`, а при отсутствии Edge — браузер по умолчанию. Если отсутствует только `pythonw.exe`, но `python.exe` доступен, батник переключается на резервный `start_server.bat`. Если отсутствует `python.exe`, запустить backend не сможет ни один режим. Прямой `start_server.bat` запускает `server\app.py` через portable `python.exe` с консольным выводом.
 
 Backend по умолчанию доступен на `http://127.0.0.1:8765`; Dashboard — `/dashboard`, Overlay — `/overlay`.
+
+Изменение порта в настройках требует перезапуска приложения. В режиме Launcher порт backend считывается при старте самого Launcher: после сохранения нового порта завершите Launcher через пункт «Выход» в трее и заново запустите `start_studio.bat`. Кнопка Stop/Start в Monitor перезапускает только backend и не перечитывает URL Launcher. В прямом режиме достаточно перезапустить `start_server.bat`.
 ### Автоматическое открытие Dashboard
 
 - При прямом запуске через `start_server.bat` Dashboard автоматически открывается после готовности backend, если в настройках включено «Открывать Dashboard при запуске» (`auto_open_browser`).
@@ -142,7 +144,7 @@ Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
 ## Launcher, монитор и завершение работы
 
 - Для обычной работы используйте `start_studio.bat`. Он запускает Launcher через portable `pythonw.exe`; Launcher создаёт обязательный трей, выбирает окно монитора и запускает backend отдельным процессом через portable `python.exe`. Основной режим — `pywebview` + WebView2; запасные режимы — Edge (`--app`) и браузер по умолчанию.
-- Если `python.exe` или `pythonw.exe` отсутствует, `start_studio.bat` вызывает `start_server.bat` как резервный консольный режим. Ошибка создания трея не приводит к тихому запуску без трея: Launcher завершает запуск с диагностикой.
+- Если отсутствует только `pythonw.exe`, но `python.exe` доступен, `start_studio.bat` вызывает `start_server.bat` как резервный консольный режим. При отсутствии `python.exe` оба режима запуска недоступны. Ошибка создания трея не приводит к тихому запуску без трея: Launcher завершает запуск с диагностикой.
 - `start_server.bat` — прямой консольный запуск backend без Launcher/tray. Используйте его для диагностики или старого режима. Не запускайте оба режима одновременно.
 - В основном режиме `pywebview` крестик скрывает окно, не останавливая backend или Launcher. Повторно открыть то же окно можно двойным щелчком по значку трея или через меню значка. В Edge/browser fallback окно закрывается вручную; закрытие внешнего окна само по себе не завершает Launcher или backend.
 - В меню трея доступны «Открыть монитор», «Открыть Dashboard» (браузер по умолчанию) и «Выход». При выборе «Выход» Launcher передаёт монитору сигнал закрытия через `/launcher-status`, после чего окно закрывается, а Launcher штатно останавливает backend. Кнопка в мониторе запускает backend, если он остановлен, или вызывает штатное выключение, если работает.
@@ -157,10 +159,10 @@ Available providers: 'AzureExecutionProvider, CPUExecutionProvider'
 Для основного режима нужны WebView2 Runtime (это отдельный компонент, не сам браузер Edge) и следующие пакеты в portable-окружении `cosyvoice3\upy`:
 
 ```bat
-cosyvoice3\upy\python.exe -m pip install --no-deps pywebview==6.2.1 pythonnet==3.1.0 clr_loader==0.3.1 proxy_tools==0.1.0 bottle==0.13.4
+cosyvoice3\upy\python.exe -m pip install --no-deps pywebview==6.2.1
 ```
 
-Установка необязательна: если пакетов или WebView2 Runtime нет, Launcher автоматически переходит к Edge/browser fallback. Пакеты устанавливаются именно в portable Python; не используйте системный Python и не обновляйте зависимости runtime заодно.
+Установка необязательна: если `pywebview` или WebView2 Runtime нет, Launcher автоматически переходит к Edge/browser fallback. В проверенной portable-сборке `pythonnet`, `clr_loader`, `proxy_tools` и `bottle` уже присутствуют; отдельно устанавливается только `pywebview`. Не устанавливайте и не обновляйте остальные runtime-зависимости без отдельной проверки.
 
 Чтобы принудительно отключить `pywebview` для одного запуска, выполните в том же окне CMD:
 

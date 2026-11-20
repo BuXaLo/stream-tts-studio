@@ -110,7 +110,7 @@ OAuth и worker получают события донатов и вызываю
 
 ## Desktop monitor
 
-Рекомендуемый запуск — `start_studio.bat`. Батник проверяет portable `python.exe`, `pythonw.exe` и `server/launcher.pyw`, затем запускает Launcher через `pythonw.exe`. Если portable Python или `pythonw.exe` отсутствует, он вызывает резервный `start_server.bat`.
+Рекомендуемый запуск — `start_studio.bat`. Батник проверяет portable `python.exe`, `pythonw.exe` и `server/launcher.pyw`, затем запускает Launcher через `pythonw.exe`. Если отсутствует только `pythonw.exe`, но `python.exe` доступен, батник вызывает резервный `start_server.bat`. Если отсутствует `python.exe`, ни Launcher, ни прямой режим не смогут запустить backend.
 
 Launcher создаёт обязательную иконку системного трея, поднимает локальный HTTP-сервер только на loopback и запускает backend отдельным процессом через portable `python.exe`. Основной интерфейс монитора — отдельное окно `pywebview` на WebView2. Если пакет `pywebview` или WebView2 Runtime недоступен, используется запасной режим: Edge с `--app=` (если Edge найден), иначе системный браузер. Во время загрузки модели монитор опрашивает Launcher и показывает `logs/startup.log`; после готовности backend подключается к `/ws/monitor` и получает историю и новые события.
 

@@ -1,7 +1,7 @@
 # Third-party notices and license inventory
 
 **Status:** practical best-effort inventory; not a legal opinion or exhaustive SBOM  
-**Last reviewed:** 2026-11-16  
+**Last reviewed:** 2026-11-20  
 **Applies to:** Stream TTS Studio source repository and the portable runtime described in [docs/PORTABLE_RUNTIME.md](docs/PORTABLE_RUNTIME.md).
 
 ## Scope

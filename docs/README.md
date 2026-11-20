@@ -1,6 +1,6 @@
 # Stream TTS Studio — документация
 
-> Документация актуальной рабочей ветки `dev_test`. Обновлено: 2026-11-16.
+> Документация актуальной рабочей ветки `dev_test`. Обновлено: 2026-11-20.
 
 ## Содержание
 
@@ -40,7 +40,7 @@
 
 ## Лицензирование и поставка
 
-MIT License относится только к оригинальному коду и документации Studio. Она не лицензирует целиком portable archive. Известные upstream-лицензии и открытые пункты собраны в [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). До публикации/передачи portable-архива необходимо проверить исходный `mortimerme/repocollect` archive, точный состав runtime, все Python/native dependencies, модели, шрифты, FFmpeg и NVIDIA-компоненты; сохранить применимые LICENSE/NOTICE и выполнить условия GPLv3 для Gyan FFmpeg full static build.
+MIT License относится только к оригинальному коду и документации Studio. Она не лицензирует целиком portable archive. Известные upstream-лицензии и открытые пункты собраны в [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). Для Gyan FFmpeg 7.1.1 получен manifest зависимостей и build toolchain от сборщика; он сохранён вместе с идентификацией бинарника и инструкциями поиска исходников в [`licenses/ffmpeg/`](../licenses/ffmpeg/BUILD_INFO.md). При публикации portable-архива необходимо сохранять применимые LICENSE/NOTICE, включая GPLv3 text рядом с FFmpeg, и предоставлять пользователям доступ к corresponding source и материалам сборки. Независимая проверка доступности всех pinned source revisions/packages и полноты build-toolchain материалов ещё остаётся открытой. Для остальных компонентов portable runtime сохраняются отдельные лицензионные условия и ранее отмеченные открытые пункты проверки.
 
 ## Как читать результаты аудита
 Различайте:

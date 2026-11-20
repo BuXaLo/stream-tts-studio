@@ -47,6 +47,6 @@ The manifest does not contain the source trees themselves. Availability of every
 
 ## License
 
-Gyan identifies this Full Build as GPLv3. The full GPLv3 text is available from the [Free Software Foundation](https://www.gnu.org/licenses/gpl-3.0.html). The portable distribution must include the GPL text already supplied with the runtime (`tools/LICENSE.GPL.txt`) and must retain it when redistributing FFmpeg.
+Gyan identifies this Full Build as GPLv3. A verbatim copy of the GPLv3 text from the FFmpeg 7.1.1 source tree is included as [`COPYING.GPLv3`](COPYING.GPLv3); the canonical [Free Software Foundation text](https://www.gnu.org/licenses/gpl-3.0.html) is also linked here. The portable runtime already contains `cosyvoice3/tools/LICENSE.GPL.txt`; retain that file and include this repository copy in the documentation/license materials distributed with FFmpeg.
 
 This file is a maintainer record, not legal advice. Before publishing a portable release, make the corresponding-source information available to recipients from a stable location next to the binary download, and verify that the source references and required build materials remain accessible.

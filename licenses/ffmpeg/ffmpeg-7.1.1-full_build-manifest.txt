@@ -19,7 +19,7 @@ game-music-emu      0.6.3                                  daaa7c67dc      https
 harfbuzz            10.4.0-151-g79c991e1                   79c991e143      https://github.com/harfbuzz/harfbuzz.git
 lc3                 1.1.3                                  9f1e206b34      https://github.com/google/liblc3.git
 lensfun             v0.3.95-1659-g956de215                 956de215cb      https://github.com/lensfun/lensfun.git
-libaribcaption      1.1.1                              27cf3cab26      https://github.com/xqq/libaribcaption
+libaribcaption      1.1.1                                  27cf3cab26      https://github.com/xqq/libaribcaption
 libass              0.17.3-79-g1b69955                     1b69955902      https://github.com/libass/libass.git
 libbluray           1.3.4-1-gc1550e5                       c1550e5cfd      https://code.videolan.org/videolan/libbluray.git
 libilbc             v3.0.4-346-g6adb26d4a4                 6adb26d4a4      https://github.com/TimothyGu/libilbc.git
@@ -35,7 +35,7 @@ ogg                 v1.3.5-10-g7cf42ea                     7cf42ea17a      https
 opencl-headers      v2024.10.24-3-g2c9ff0c                 2c9ff0ccf6      https://github.com/KhronosGroup/OpenCL-Headers.git
 opencl-loader       v2024.10.24-1-g9228024                 92280246c8      https://github.com/KhronosGroup/OpenCL-ICD-Loader.git
 openmpt             libopenmpt-0.6.22-19-g9ae5dfb5b        9ae5dfb5b6      https://github.com/OpenMPT/openmpt.git
-opus                v1.5.2-73-gc79a9bd1                   c79a9bd1dd      https://github.com/xiph/opus.git
+opus                v1.5.2-73-gc79a9bd1                    c79a9bd1dd      https://github.com/xiph/opus.git
 qrencode            4.1.1                                  715e29fd4c      https://github.com/fukuchi/libqrencode
 quirc               1.2                                    fd13bfbf4f      https://github.com/dlbeer/quirc
 rav1e               p20250225                              38879ab5a5      https://github.com/xiph/rav1e.git
@@ -74,14 +74,14 @@ mingw-w64-x86_64-libcdio-paranoia          10.2+2.0.0-2
 mingw-w64-x86_64-libmodplug                0.8.9.0-4
 mingw-w64-x86_64-libssh                    0.11.1-1
 mingw-w64-x86_64-libtheora                 1.1.1-7
-mingw-w64-x86_64-libunibreak                6.1-1
-mingw-w64-x86_64-libvo-amrwbenc             0.1.3-2
-mingw-w64-x86_64-opencore-amr               0.1.6-1
-mingw-w64-x86_64-openjpeg2                  2.5.2-1
+mingw-w64-x86_64-libunibreak               6.1-1
+mingw-w64-x86_64-libvo-amrwbenc            0.1.3-2
+mingw-w64-x86_64-opencore-amr              0.1.6-1
+mingw-w64-x86_64-openjpeg2                 2.5.2-1
 mingw-w64-x86_64-snappy                    1.2.1-1
-mingw-w64-x86_64-twolame                   0.4.0-2
+mingw-w64-x86_64-twolame                   0.4.0-3
 mingw-w64-x86_64-xvidcore                  1.3.7-4
-mingw-w64-x86_64-zeromq                   4.3.5-1
+mingw-w64-x86_64-zeromq                    4.3.5-3
         
 mingw-w64-x86_64-binutils                  2.43.1-1
 mingw-w64-x86_64-brotli                    1.1.0-2
@@ -97,20 +97,20 @@ mingw-w64-x86_64-headers                   12.0.0.r335.g6cd6fee9c-1
 mingw-w64-x86_64-libarchive                3.7.6-1
 mingw-w64-x86_64-libffi                    3.4.6-1
 mingw-w64-x86_64-libgcrypt                 1.11.0-2
-mingw-w64-x86_64-libiconv                 1.17-4
-mingw-w64-x86_64-libidn2                  2.3.7-1
+mingw-w64-x86_64-libiconv                  1.17-4
+mingw-w64-x86_64-libidn2                   2.3.7-2
 mingw-w64-x86_64-libstdc++                 14.2.0-1
 mingw-w64-x86_64-libtasn1                  4.19.0-1
 mingw-w64-x86_64-libwinpthread             12.0.0.r335.g6cd6fee9c-1
-mingw-w64-x86_64-make                      4.4.1-1
+mingw-w64-x86_64-make                      4.4.1-3
 mingw-w64-x86_64-meson                     1.5.2-1
 mingw-w64-x86_64-nasm                      2.16.03-1
 mingw-w64-x86_64-nettle                    3.10-1
-mingw-w64-x86_64-ninja                    1.12.1-1
+mingw-w64-x86_64-ninja                     1.12.1-1
 mingw-w64-x86_64-rust                      1.81.0-5
 mingw-w64-x86_64-tools                     12.0.0.r335.g6cd6fee9c-1
 mingw-w64-x86_64-xz                        5.6.3-1
 mingw-w64-x86_64-zlib                      1.3.1-1
-mingw-w64-x86_64-zstd                     1.5.6-2
+mingw-w64-x86_64-zstd                      1.5.6-2
 
 mingw packages can be obtained from https://packages.msys2.org/packages/

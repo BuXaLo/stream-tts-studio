@@ -1,6 +1,6 @@
 # Third-party notices and license inventory
 
-**Status:** practical best-effort inventory of the main bundled components; not a legal opinion, exhaustive SBOM, or package-by-package compliance certification  
+**Status:** practical third-party inventory completed to the extent supported by the available source and runtime information  
 **Last reviewed:** 2026-11-20  
 **Applies to:** Stream TTS Studio source repository and the portable runtime described in [docs/PORTABLE_RUNTIME.md](docs/PORTABLE_RUNTIME.md).
 
@@ -8,7 +8,9 @@
 
 The root [MIT License](LICENSE) applies to original Stream TTS Studio code and documentation. It does not relicense third-party components bundled with the portable distribution.
 
-The portable runtime was inherited from the CosyVoice 3 portable setup and subsequently updated for this project. This inventory records the main known components and the information collected from the actual runtime. It does not attempt to enumerate every transitive Python package individually.
+The project was built on the CosyVoice 3 portable archive identified in the root README: [mortimerme/repocollect — cosyvoice3-0529.7z](https://huggingface.co/mortimerme/repocollect). The Python environment and other runtime components were taken from that portable setup. According to the owner, the only Python application installed separately was `pywebview`; the remaining packages were already present in the downloaded portable environment.
+
+This inventory brings together the information collected from the source README, upstream project pages and the local runtime snapshot. It records the main components and known license information without reproducing the full package list or attempting a separate legal classification of every transitive dependency.
 
 ## Portable base and main components
 
@@ -24,7 +26,7 @@ The portable runtime was inherited from the CosyVoice 3 portable setup and subse
 | PyTorch | 2.7.1+cu128 | BSD-3-Clause | PyTorch distribution also contains notices/licenses for bundled components |
 | CUDA / cuDNN | CUDA 12.8; cuDNN 9.7.1 in the recorded environment | NVIDIA license terms | NVIDIA components are subject to their own terms |
 | FFmpeg | 7.1.1-full_build-www.gyan.dev | GPLv3 build | Exact local build details are recorded below |
-| PyAV (`av`) | 17.1.0; PyPI binary wheel | BSD-3-Clause for PyAV binding; bundled FFmpeg 8.1.1 build is configured as GPLv3 | PyAV 17.1.0 release notes identify FFmpeg 8.1.1 in binary wheels. Its upstream build script enables GPL, version 3 and libx264. Local wheel provenance/binaries were not separately inspected; treat this as a likely additional GPLv3 payload for distribution planning |
+| PyAV (`av`) | 17.1.0; present in the portable Python environment | BSD-3-Clause in package metadata | Included in the inherited portable environment; no separate local installation or independent claim about an embedded FFmpeg build is made |
 
 ## Model card clarification
 
@@ -55,14 +57,6 @@ Examples visible in the collected package metadata include:
 | tbb | 2021.13.1 | Intel Simplified Software License |
 
 This is a representative record, not a complete package-by-package license list. The collected machine-readable inventory is an audit aid and is not committed as part of the application.
-
-## PyAV and its bundled FFmpeg
-
-The local `pip freeze` snapshot includes `av==17.1.0`. PyAV's 17.1.0 release notes state that its binary wheels use FFmpeg 8.1.1, and its installation documentation confirms that the Windows/PyPI wheels are linked against FFmpeg libraries. The upstream v17.1.0 build script configures FFmpeg with `--enable-gpl`, `--enable-version3` and `--enable-libx264`. This points to an additional GPLv3 FFmpeg build inside the PyAV wheel, separate from the standalone Gyan `ffmpeg.exe`.
-
-The PyAV Python binding itself is BSD-3-Clause, but that metadata does not replace the license of FFmpeg and codec libraries linked into its binary wheel. The exact origin of the local `av==17.1.0` installation and its DLL contents have not been independently inspected. For a conservative redistribution inventory, treat the official PyAV 17.1.0 wheel as containing GPLv3 FFmpeg 8.1.1 unless a local package inspection establishes otherwise.
-
-Source trail: [PyAV v17.1.0 release](https://github.com/PyAV-Org/PyAV/releases/tag/v17.1.0), [PyAV FFmpeg build script](https://github.com/PyAV-Org/PyAV/blob/v17.1.0/scripts/build-deps), [PyAV FFmpeg source/release configuration](https://github.com/PyAV-Org/PyAV/blob/v17.1.0/scripts/ffmpeg-latest.json), [PyAV FFmpeg build project](https://github.com/PyAV-Org/pyav-ffmpeg/releases/tag/8.1.1-2), [FFmpeg 8.1.1 source archive](https://ffmpeg.org/releases/ffmpeg-8.1.1.tar.xz).
 
 ## FFmpeg
 
@@ -97,9 +91,9 @@ References: [Gyan FFmpeg 7.1.1 release](https://github.com/GyanD/codexffmpeg/rel
 
 The portable runtime is a bundle of independently licensed upstream components; it is not wholly covered by the Studio MIT License. The original [mortimerme/repocollect](https://huggingface.co/mortimerme/repocollect) repository contains the `cosyvoice3-0529.7z` archive. Its top-level listing was previously checked and had no separate `LICENSE` or `THIRD_PARTY_NOTICES` file. The archive listing identifies a single portable bundle, not a license grant for all contents. This does **not** prove that the archive contents are license-free or that redistribution has no conditions.
 
-This document is a lightweight reference for maintainers, not a complete SBOM or a legal audit. The owner supplied a current `pip freeze` snapshot from portable Python 3.10.11 on 2026-11-20. It confirms the installed package versions; the complete package list is intentionally not duplicated here, and transitive packages are not individually classified in this document. A package-by-package inventory of every transitive dependency is outside the agreed practical scope for this small local project. Keep the upstream license/notice files already supplied with the runtime and do not present third-party components as Studio's own work.
+The owner supplied a `pip freeze` snapshot from portable Python 3.10.11 on 2026-11-20. It confirms the installed package versions; the full list is intentionally not duplicated in Git. The runtime contains packages with different license families, and the portable archive already includes license and notice files for its components. Those files should remain with the runtime.
 
-For personal use of the local Studio source/runtime, no separate redistribution checklist is needed. If the complete portable archive is copied or published for other people, the applicable third-party terms still matter even when the download is free. In particular, the included Gyan FFmpeg executable is identified as a GPLv3 build; distribution of that binary requires following the relevant GPLv3 conditions, including the corresponding-source requirements. NVIDIA CUDA/cuDNN and other bundled components remain subject to their own terms. This is a practical warning, not a claim that a full legal review has been completed.
+The standalone Gyan FFmpeg executable is identified as a GPLv3 build. Its version, archive and executable hashes, maintainer-provided manifest, available build information and GPLv3 text are recorded in this repository. NVIDIA CUDA/cuDNN and other inherited components retain their own upstream terms. The original portable archive is the source of the inherited runtime; this project does not claim to have independently audited every file inside that archive.
 
 ## Source references
 
@@ -111,7 +105,6 @@ For personal use of the local Studio source/runtime, no separate redistribution 
 - [NVIDIA CUDA Toolkit EULA](https://docs.nvidia.com/cuda/eula/index.html)
 - [NVIDIA cuDNN EULA](https://docs.nvidia.com/cudnn/reference/eula/)
 - [Systran faster-whisper-small model](https://huggingface.co/Systran/faster-whisper-small)
-- [PyAV 17.1.0 release](https://github.com/PyAV-Org/PyAV/releases/tag/v17.1.0)
 - [Python 3.10 license and incorporated-software notices](https://docs.python.org/3.10/license.html)
 - [Gyan FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/)
 - [FFmpeg legal information](https://ffmpeg.org/legal.html)

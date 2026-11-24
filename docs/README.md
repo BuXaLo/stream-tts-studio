@@ -1,13 +1,14 @@
 # Stream TTS Studio — документация
 
-> Документация актуальной рабочей ветки `dev_test`. Обновлено: 2026-11-20.
+> Документация актуальной рабочей ветки `dev_test`. Обновлено: 2026-11-24.
 
 ## Содержание
 
 - [Рекомендуемый запуск и эксплуатация](OPERATIONS.md#2-запуск)
 - [Архитектура Launcher и монитора](ARCHITECTURE.md#desktop-monitor)
 
-- [Архитектура и модель поставки](ARCHITECTURE.md)
+- [Архитектура, компоненты и TTS Pipeline](ARCHITECTURE.md)
+- [Пользовательская главная страница и быстрый запуск](../README.md)
 - [HTTP и WebSocket API](API.md)
 - [Статический аудит и эксплуатационные сведения](AUDIT.md)
 - [Baseline и inventory portable runtime](PORTABLE_RUNTIME.md)
@@ -43,6 +44,10 @@
 MIT License относится к оригинальному коду и документации Stream TTS Studio, но не заменяет лицензии компонентов исходной portable-сборки CosyVoice 3 [`mortimerme/repocollect — cosyvoice3-0529.7z`](https://huggingface.co/mortimerme/repocollect). Практическая инвентаризация основных компонентов и доступных сведений об их лицензиях собрана в [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) и [`PORTABLE_RUNTIME.md`](PORTABLE_RUNTIME.md). Python-окружение взято из исходного portable; отдельно владельцем установлен только `pywebview`.
 
 Для standalone Gyan FFmpeg 7.1.1 сохранены идентификация архива и EXE, manifest зависимостей и build toolchain от сборщика, сведения о сборке и текст GPLv3 в [`licenses/ffmpeg/`](../licenses/ffmpeg/BUILD_INFO.md). Документация отражает всю информацию, которую удалось собрать в согласованном практическом объёме. Полная независимая проверка каждого файла исходного portable-архива и транзитивной зависимости не проводилась; неизвестные по доступным материалам детали остаются вопросами к исходной portable-сборке и её поставщику.
+
+## Текущая оценка и открытые задачи
+
+Основной пользовательский тракт, OBS, DonationAlerts и все четыре шаблона C# Builder подтверждены владельцем в реальной эксплуатации. A-11 по нормализации чисел намеренно оставлена на последний этап. S7b, S8, S9 и дополнительные failure-mode проверки не являются обязательными задачами текущего релиза. Актуальные статусы: [AUDIT.md](AUDIT.md), [ROADMAP.md](ROADMAP.md), [REFACTOR_PLAN.md](REFACTOR_PLAN.md).
 
 ## Как читать результаты аудита
 Различайте:
